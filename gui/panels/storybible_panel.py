@@ -12,9 +12,10 @@ Injected into every agent as the SETTING via src/worldcontext.py.
 import customtkinter as ctk
 
 from gui import theme
-from gui.panels.base import BasePanel
+from gui.panels.base import BasePanel, bind_scroll_width, bind_wraplength
 from gui.panels.lorebook_panel import LoreBookPanel
 from gui.panels.worldstate_panel import WorldStatePanel
+from gui.widgets.generate_field import GenerateRegistry, attach_field_generate
 from src import story_bible, outline, chapters
 
 _BIBLE_FIELDS = [
@@ -37,6 +38,8 @@ class StoryBiblePanel(BasePanel):
         super().__init__(master, app)
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
+        self._bible_registry = GenerateRegistry()
+        self._outline_registry = GenerateRegistry()
 
         self.tabs = ctk.CTkTabview(self, fg_color=theme.BG_CARD)
         self.tabs.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
@@ -61,6 +64,12 @@ class StoryBiblePanel(BasePanel):
     def _paths(self):
         return self.app.engine.paths
 
+    def _outline_context(self):
+        ch = self.outline_menu.get()
+        if ch and ch != "(none)":
+            return f"Outline chapter: {ch}"
+        return "Outline chapter: (none selected)"
+
     # ----------------------- Bible tab -------------------------------------
     def _build_bible(self, tab):
         tab.grid_rowconfigure(0, weight=1)
@@ -68,19 +77,28 @@ class StoryBiblePanel(BasePanel):
         scroll = ctk.CTkScrollableFrame(tab, fg_color=theme.BG_APP)
         scroll.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
         scroll.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(scroll, text="Defines the world (the SETTING injected into "
-                     "every agent). Edit here, not in the personas.",
-                     text_color=theme.TEXT_MUTED, wraplength=520, justify="left"
-                     ).grid(sticky="w", padx=12, pady=(8, 4))
+        bind_scroll_width(scroll)
+
+        intro = ctk.CTkLabel(
+            scroll,
+            text="Defines the world (the SETTING injected into every agent). "
+                 "Edit here, not in the personas.",
+            text_color=theme.TEXT_MUTED, justify="left", anchor="w")
+        intro.grid(row=0, column=0, sticky="ew", padx=12, pady=(8, 4))
+        bind_wraplength(intro, scroll)
+
         self.bible_widgets = {}
+        row = 1
         for key, label, multiline in _BIBLE_FIELDS:
-            ctk.CTkLabel(scroll, text=label, anchor="w",
-                         text_color=theme.TEXT_PRIMARY).grid(sticky="ew", padx=12,
-                                                            pady=(10, 2))
-            w = (ctk.CTkTextbox(scroll, height=70, wrap="word") if multiline
-                 else ctk.CTkEntry(scroll))
-            w.grid(sticky="ew", padx=12, pady=(0, 4))
-            self.bible_widgets[key] = w
+            block = attach_field_generate(
+                scroll, self.app, label, multiline=multiline,
+                context_fn=lambda: "Story Bible tab",
+                registry=self._bible_registry,
+            )
+            block.grid(row=row, column=0, sticky="ew", padx=12, pady=(0, 4))
+            self.bible_widgets[key] = block.widget
+            row += 1
+
         ctk.CTkButton(tab, text="Save Bible", command=self._save_bible,
                       **theme.primary_btn()).grid(row=1, column=0, sticky="e",
                                                   padx=12, pady=(4, 8))
@@ -112,7 +130,7 @@ class StoryBiblePanel(BasePanel):
 
     # ----------------------- Outline tab -----------------------------------
     def _build_outline(self, tab):
-        tab.grid_rowconfigure(2, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
         tab.grid_columnconfigure(0, weight=1)
         top = ctk.CTkFrame(tab, fg_color="transparent")
         top.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
@@ -124,16 +142,27 @@ class StoryBiblePanel(BasePanel):
         ctk.CTkButton(top, text="Save Outline", command=self._save_outline,
                       **theme.primary_btn()).pack(side="right")
 
-        ctk.CTkLabel(tab, text="Synopsis", anchor="w", text_color=theme.TEXT_PRIMARY
-                     ).grid(row=1, column=0, sticky="ew", padx=12)
-        self.outline_synopsis = ctk.CTkTextbox(tab, height=80, wrap="word")
-        self.outline_synopsis.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 6))
-        ctk.CTkLabel(tab, text="Beats (one per line)", anchor="w",
-                     text_color=theme.TEXT_PRIMARY).grid(row=3, column=0,
-                                                        sticky="ew", padx=12)
-        self.outline_beats = ctk.CTkTextbox(tab, wrap="word")
-        self.outline_beats.grid(row=4, column=0, sticky="nsew", padx=12, pady=(0, 10))
-        tab.grid_rowconfigure(4, weight=1)
+        body = ctk.CTkFrame(tab, fg_color="transparent")
+        body.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
+        body.grid_rowconfigure(1, weight=1)
+        body.grid_columnconfigure(0, weight=1)
+
+        self.outline_synopsis_block = attach_field_generate(
+            body, self.app, "Synopsis", multiline=True, height=80,
+            context_fn=self._outline_context,
+            registry=self._outline_registry,
+        )
+        self.outline_synopsis_block.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+
+        self.outline_beats_block = attach_field_generate(
+            body, self.app, "Beats (one per line)", multiline=True, height=120,
+            context_fn=self._outline_context,
+            registry=self._outline_registry,
+        )
+        self.outline_beats_block.grid(row=1, column=0, sticky="nsew")
+        self.outline_synopsis = self.outline_synopsis_block.widget
+        self.outline_beats = self.outline_beats_block.widget
+
         self._outline_by_name = {}
         self._outline_cid = None
 

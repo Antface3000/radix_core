@@ -3,7 +3,8 @@
 import customtkinter as ctk
 
 from gui import theme
-from gui.panels.base import BasePanel
+from gui.panels.base import BasePanel, bind_scroll_width
+from gui.widgets.generate_field import GenerateRegistry, attach_field_generate
 from src import world_state
 
 _SCALARS = [("currentDate", "Current date"), ("currentLocation", "Current location"),
@@ -20,25 +21,35 @@ class WorldStatePanel(BasePanel):
     def __init__(self, master, app):
         super().__init__(master, app)
         self.grid_rowconfigure(1, weight=1)
+        self._gen_registry = GenerateRegistry()
         self.header("World State", "Tracks 'now': timeline beats, factions, events, "
                                    "and facts. Injected into agents alongside the bible.")
         self.scroll = ctk.CTkScrollableFrame(self, fg_color=theme.BG_CARD)
         self.scroll.grid(row=1, column=0, sticky="nsew", padx=16, pady=(4, 8))
         self.scroll.grid_columnconfigure(0, weight=1)
+        bind_scroll_width(self.scroll)
         self.widgets = {}
+        row = 0
         for key, label in _SCALARS:
-            ctk.CTkLabel(self.scroll, text=label, anchor="w",
-                         text_color=theme.TEXT_PRIMARY).grid(sticky="ew", padx=12, pady=(10, 2))
-            w = ctk.CTkEntry(self.scroll)
-            w.grid(sticky="ew", padx=12, pady=(0, 4))
-            self.widgets[key] = w
+            block = attach_field_generate(
+                self.scroll, app, label, multiline=False,
+                context_fn=lambda: "World State tab",
+                registry=self._gen_registry,
+            )
+            block.grid(row=row, column=0, sticky="ew", padx=12, pady=(0, 4))
+            self.widgets[key] = block.widget
+            row += 1
         for key, label in _LISTS:
-            ctk.CTkLabel(self.scroll, text=label, anchor="w",
-                         text_color=theme.TEXT_PRIMARY).grid(sticky="ew", padx=12, pady=(10, 2))
-            w = ctk.CTkTextbox(self.scroll, height=80, wrap="word")
-            w.grid(sticky="ew", padx=12, pady=(0, 4))
-            self.widgets[key] = w
-        ctk.CTkButton(self, text="Save World State", command=self._save
+            block = attach_field_generate(
+                self.scroll, app, label, multiline=True, height=80,
+                context_fn=lambda: "World State tab",
+                registry=self._gen_registry,
+            )
+            block.grid(row=row, column=0, sticky="ew", padx=12, pady=(0, 4))
+            self.widgets[key] = block.widget
+            row += 1
+        ctk.CTkButton(self, text="Save World State", command=self._save,
+                      **theme.primary_btn()
                       ).grid(row=2, column=0, sticky="e", padx=16, pady=(0, 16))
         self.on_show()
 

@@ -32,12 +32,17 @@ Added
 - Default AllTalk path detection (C:\AllTalkV2\alltalk_tts) in start_services.
 - Model download URLs in INSTALL.txt (sections 7, 9, 10) and USER_GUIDE.txt
   (section 13).
+- Story Bible field Generate: each text field on Bible, Lorebook, World State,
+  and Outline tabs can run T1/T2/T3 or Orchestrated with a prompt.
 
 Fixed
 -----
 - Startup crash: missing import config in editor_panel.py (style preset menu).
 - Start Radix Core.bat now pauses on error so the console stays open if launch
   fails.
+- Tab button contrast (inactive tabs readable) via CTkTabview / CTkSegmentedButton
+  theme colors.
+- Story Bible help text and scroll areas no longer clip in a narrow side dock.
 
 [0.1.0] - 2026-06-27
 ====================

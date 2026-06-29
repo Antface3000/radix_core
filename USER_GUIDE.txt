@@ -203,6 +203,11 @@ Open from the rail. It consolidates four tabs:
   World: ...), plus timeline, factions, ongoing events, and facts.
 - Outline: per-chapter synopsis and beats.
 
+Each text field on those tabs has a Generate button. Click it, enter a prompt,
+pick T1 (Architect), T2 (Operator), T3 (Flavor), or Orchestrated, then Run.
+Generated text streams into the field (appends if the field already has content).
+Only one prompt row stays open at a time per tab.
+
 Live lore auto-scan continuously matches your recent writing against the
 Lorebook and surfaces relevant entries under the editor (and feeds them to the
 AI). Configure it in Settings -> Editor.

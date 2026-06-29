@@ -7,8 +7,9 @@ import threading
 import customtkinter as ctk
 
 from gui import theme
-from gui.panels.base import BasePanel
+from gui.panels.base import BasePanel, bind_scroll_width
 from gui.tooltip import attach
+from gui.widgets.generate_field import GenerateRegistry, attach_field_generate
 from src import lore
 
 try:
@@ -37,6 +38,7 @@ class LoreBookPanel(BasePanel):
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=2)
         self.current_id = None
+        self._gen_registry = GenerateRegistry()
         self.header("Lore Book", "Canonical characters and world entries. Flag "
                                  "entries 'always include' to inject them into agents.")
         self._build_list()
@@ -66,23 +68,25 @@ class LoreBookPanel(BasePanel):
         right = ctk.CTkScrollableFrame(self, fg_color=theme.BG_CARD)
         right.grid(row=1, column=1, sticky="nsew", padx=(8, 16), pady=(4, 16))
         right.grid_columnconfigure(0, weight=1)
+        bind_scroll_width(right)
         self.form = right
         self.widgets = {}
+        row = 0
         for key, label, multiline in _FIELDS:
-            ctk.CTkLabel(right, text=label, anchor="w",
-                         text_color=theme.TEXT_PRIMARY).grid(sticky="ew", padx=12, pady=(10, 2))
-            if multiline:
-                w = ctk.CTkTextbox(right, height=70, wrap="word")
-            else:
-                w = ctk.CTkEntry(right)
-            w.grid(sticky="ew", padx=12, pady=(0, 4))
+            block = attach_field_generate(
+                right, self.app, label, multiline=multiline,
+                context_fn=self._lore_context,
+                registry=self._gen_registry,
+            )
+            block.grid(row=row, column=0, sticky="ew", padx=12, pady=(0, 4))
             if key == "imagePrompt":
-                attach(w, "Overrides the auto-built image prompt for this entry. "
+                attach(block.widget, "Overrides the auto-built image prompt for this entry. "
                           "Leave blank to use Appearance/Notes.")
-            self.widgets[key] = w
+            self.widgets[key] = block.widget
+            row += 1
 
         flags = ctk.CTkFrame(right, fg_color="transparent")
-        flags.grid(sticky="ew", padx=12, pady=6)
+        flags.grid(row=row, column=0, sticky="ew", padx=12, pady=6)
         self.always = ctk.BooleanVar()
         self.pinned = ctk.BooleanVar()
         always_cb = ctk.CTkCheckBox(flags, text="Always include", variable=self.always)
@@ -95,7 +99,7 @@ class LoreBookPanel(BasePanel):
                           "when context space is limited.")
 
         btns = ctk.CTkFrame(right, fg_color="transparent")
-        btns.grid(sticky="ew", padx=12, pady=8)
+        btns.grid(row=row + 1, column=0, sticky="ew", padx=12, pady=8)
         ctk.CTkButton(btns, text="Save", width=90, command=self._save).pack(side="left", padx=2)
         ctk.CTkButton(btns, text="Delete", width=90, fg_color=theme.RED,
                       hover_color="#a82a2a", command=self._delete).pack(side="left", padx=2)
@@ -106,9 +110,19 @@ class LoreBookPanel(BasePanel):
                         "its appearance/image prompt.")
 
         self.image_label = ctk.CTkLabel(right, text="(no image)", text_color=theme.TEXT_MUTED)
-        self.image_label.grid(sticky="ew", padx=12, pady=8)
+        self.image_label.grid(row=row + 2, column=0, sticky="ew", padx=12, pady=8)
         self.gen_status = ctk.CTkLabel(right, text="", text_color=theme.TEXT_MUTED)
-        self.gen_status.grid(sticky="ew", padx=12, pady=(0, 8))
+        self.gen_status.grid(row=row + 3, column=0, sticky="ew", padx=12, pady=(0, 8))
+
+    def _lore_context(self):
+        name = self.widgets.get("name")
+        typ = self.widgets.get("type")
+        parts = ["Lorebook entry"]
+        if name:
+            parts.append(f"Name: {name.get().strip()}")
+        if typ:
+            parts.append(f"Type: {typ.get().strip()}")
+        return "\n".join(parts)
 
     # ----------------------- data ------------------------------------------
     def on_show(self):

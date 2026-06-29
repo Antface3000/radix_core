@@ -43,3 +43,20 @@ class BasePanel(ctk.CTkFrame):
         return ctk.CTkLabel(parent, text=text, anchor="w",
                             font=ctk.CTkFont(size=14, weight="bold"),
                             text_color=theme.TEXT_PRIMARY)
+
+
+def bind_wraplength(label, parent, pad=24):
+    """Keep label text wrapping to the parent width (avoids clipping in narrow docks)."""
+    def _resize(event, lbl=label, p=pad):
+        lbl.configure(wraplength=max(120, event.width - p))
+    parent.bind("<Configure>", _resize, add="+")
+    if parent.winfo_width() > 1:
+        label.configure(wraplength=max(120, parent.winfo_width() - pad))
+
+
+def bind_scroll_width(scroll):
+    """Sync CTkScrollableFrame inner width to its viewport."""
+    def _resize(event):
+        canvas = scroll._parent_canvas
+        canvas.itemconfigure(scroll._parent_frame_id, width=event.width)
+    scroll.bind("<Configure>", _resize, add="+")
