@@ -1,0 +1,17 @@
+# GUI
+customtkinter>=5.2.0
+pillow>=10.0.0
+
+# Inference engine (see README for the CUDA / prebuilt-wheel install on Windows)
+llama-cpp-python>=0.2.79
+
+# Services: ComfyUI image generation + AllTalk/Piper TTS
+requests>=2.31.0
+websocket-client>=1.7.0
+
+# Audio playback fallback on non-Windows (Windows uses built-in winsound)
+sounddevice>=0.4.6
+soundfile>=0.12.1
+
+# Optional: only needed for scripts/download_models.py
+huggingface_hub>=0.23.0

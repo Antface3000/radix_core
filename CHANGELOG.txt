@@ -1,0 +1,75 @@
+CHANGELOG
+=========
+
+All notable changes to Radix Core are documented here.
+
+Format loosely based on Keep a Changelog. Versioning follows Semantic Versioning.
+
+
+[UNRELEASED]
+============
+
+Changed
+-------
+- Documentation moved from .md to plain .txt (INSTALL.txt, USER_GUIDE.txt,
+  README.txt, CHANGELOG.txt, and asset folder notes) - no markdown fences.
+- run.py bootstraps its own virtual environment on first launch; no manual venv
+  activation needed.
+- Renamed run.bat -> Start Radix Core.bat; it runs scripts/start_services.py
+  before opening the app.
+- Default n_ctx raised to 8192 and max output tokens to 2400 (Settings -> Editor
+  write_max_tokens / generation.max_tokens).
+- Writing style preset labels: My Style, Alt Style, Neutral Style (Write bar).
+- Marquee ... More overflow drawer on narrow windows; resizable side dock.
+- Editor AI bar scrolls horizontally when the window is narrow.
+- Projects launcher on startup replaces the old Welcome window.
+- Setup, Settings, and Help removed from the left rail (marquee only).
+
+Added
+-----
+- scripts/start_services.py - pre-launch AllTalk start, ComfyUI probe, Piper report.
+- scripts/setup_piper.py - download Piper binary + en_US-amy-medium voice.
+- Default AllTalk path detection (C:\AllTalkV2\alltalk_tts) in start_services.
+
+
+[0.1.0] - 2026-06-27
+====================
+
+First public release. A local-only, editor-first creative writing suite that
+drives local LLM agents (llama-cpp-python) plus ComfyUI image generation and
+AllTalk/Piper voice - all on your own machine, no cloud APIs.
+
+Added
+-----
+Editor and writing:
+  - Editor-first workspace with rich-text tagging, word goal, Focus, Typewriter.
+  - Write, Brainstorm, Chat, Visualize, Listen, Ask Agent on the selection.
+  - Ghostwriter -> critics write pipeline with optional full-team pass.
+  - Draft edits with Accept All / Reject All / Review.
+  - Live lore auto-scan under the editor.
+
+Agents and orchestration:
+  - 14+ personas with global + per-project overrides.
+  - Multi-agent orchestration with optional HITL.
+  - Single-slot model loading for 8 GB GPUs; MOCK mode without models.
+
+Story data:
+  - Per-project workspaces; Story Bible, Lorebook, World State, Outline.
+  - Lore capture markers ([[REMEMBER]], [[CHARACTER]], etc.).
+
+Services hub:
+  - Setup panel: ComfyUI, AllTalk, Piper connect/verify/sync.
+  - Top-bar heartbeat dots; Sync Assets (copy-only).
+
+Image and voice:
+  - ComfyUI client; TTS via AllTalk or Piper.
+
+UI:
+  - Dark/lime theme; left rail + pop-out dock; Music panel (Deezer WIP).
+  - Tooltips; in-app Help panel.
+
+Docs and install:
+  - install.bat, get_models.bat, run.py launcher.
+
+Architecture:
+  - WritingEngine over shared AgentEngine (single model slot).

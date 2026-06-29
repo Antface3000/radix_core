@@ -1,0 +1,595 @@
+RADIX CORE - INSTALLATION (WINDOWS)
+===================================
+
+This guide gets Radix Core running on a Windows PC. No coding required. Just
+follow the steps in order and click what it tells you to.
+
+NOTE: You'll need Windows 10 or 11, and free disk space depending on what you
+use: about 20 GB for writing only, or about 50-60 GB for the full experience
+with image generation and voice (the ComfyUI image models are large - see
+Disk space below for the breakdown).
+Time: about 10 minutes to set up the app, plus extra time later if you choose
+to download the AI models (a big about 15 GB download).
+
+
+PART 1 - THE EASY WAY (DO THIS)
+===============================
+
+There are only four steps. Take your time; nothing here can break your PC.
+
+
+STEP 1 - INSTALL PYTHON (ONE TIME ONLY)
+---------------------------------------
+
+Python is the free program Radix Core runs on. You only ever do this once.
+
+First, check whether you already have it (many PCs do):
+
+1. Click the Start menu, type cmd, and press Enter to open a black Command
+   Prompt window.
+2. Type this exactly and press Enter:
+
+
+   python --version
+
+
+3. Read the result:
+   - If it says Python 3.10 or higher (e.g. Python 3.11.5, Python 3.13.1),
+     you're done - skip to Step 2.
+   - If it says Python 3.9 or lower, or you get an error like "'python' is not
+     recognized" or a Microsoft Store page opens, you need to install it below.
+
+To install Python:
+
+1. Go to https://www.python.org/downloads/
+2. Click the big yellow "Download Python" button.
+3. Open the file you just downloaded (it's in your Downloads folder).
+4. VERY IMPORTANT: on the first screen, tick the little box at the bottom that
+   says "Add python.exe to PATH". (If you miss this, Radix Core won't find
+   Python.)
+5. Click "Install Now" and wait for it to finish, then click Close.
+6. To confirm it worked, open a new Command Prompt and run python --version
+   again - it should now show 3.10 or higher.
+
+That's it - you won't need to open Python yourself. Radix Core uses it for you.
+
+
+STEP 2 - PUT THE RADIX CORE FOLDER SOMEWHERE EASY
+-------------------------------------------------
+
+If you received Radix Core as a .zip file, right-click it and choose
+"Extract All...", then pick a simple spot like your Documents folder.
+You should end up with a folder named radix_core that has files like
+install.bat and Start Radix Core.bat inside it.
+
+
+STEP 3 - RUN THE INSTALLER
+--------------------------
+
+1. Open the radix_core folder.
+2. Find the file named install.bat and double-click it.
+3. A black window will open and start setting things up. This is normal -
+   just let it run (it can take a few minutes).
+   - If a blue box says "Windows protected your PC", click "More info",
+     then "Run anyway". (This warning shows up for any new unsigned program;
+     the installer is safe.)
+4. When it finishes it asks "Launch Radix Core now? [y/N]" - type y and
+   press Enter to open the app for the first time.
+
+
+STEP 4 - OPEN THE APP ANY TIME
+------------------------------
+
+From now on, just double-click Start Radix Core.bat whenever you want to
+start Radix Core. (You never have to run the installer again.)
+
+What happens when you double-click Start Radix Core.bat:
+
+1. A black console window opens briefly. It ensures the virtual environment
+   exists, then runs scripts/start_services.py. That window reports whether
+   AllTalk, ComfyUI, and Piper are up (and starts AllTalk if needed). Let it
+   finish - this is normal.
+2. The Radix Core app window opens. On first launch, a Projects launcher
+   lets you continue your last project, open another, or start a new one.
+3. The ? button in the top bar opens the in-app User Guide any time.
+
+
+DEMO MODE VS. THE REAL AI
+-------------------------
+
+Right after install, Radix Core works in demo mode: the AI replies start with
+[MOCK ...]. This is expected - it means everything is working, but the actual
+AI "brains" (the models) aren't downloaded yet. You can explore the whole
+interface like this.
+
+When you're ready for the real AI:
+
+- Double-click get_models.bat. It downloads the three AI models (about 15 GB,
+  so give it time) into the models folder.
+- Close and reopen the app with Start Radix Core.bat. The [MOCK ...] tags
+  disappear and the real AI takes over.
+
+The image generation and voice features are optional extras - see Part 3 if
+you want them later.
+
+
+IF SOMETHING GOES WRONG (EASY-WAY FIXES)
+----------------------------------------
+
+- The black window flashes and closes instantly / says Python not found:
+  Python wasn't installed with the PATH box ticked. Re-run the Python installer
+  from Step 1 and make sure "Add python.exe to PATH" is checked.
+- "Windows protected your PC" popup: click More info -> Run anyway.
+- Start Radix Core.bat says Python wasn't found: install Python from Step 1
+  (make sure "Add python.exe to PATH" is ticked), then double-click it again.
+  It sets everything else up on its own.
+- The app is slow / still says [MOCK ...]: that's demo mode - run get_models.bat
+  to add the real AI models.
+
+If you're comfortable with the command line and want to customize things (GPU
+speed-up, manual model placement, ComfyUI/voice), keep reading.
+
+
+PART 2 - ADVANCED / MANUAL INSTALL (OPTIONAL)
+=============================================
+
+Everything below is the manual, command-line equivalent of Part 1, for
+developers and tinkerers. Most testers can stop here - Part 1 is all you need.
+
+NOTE: Want GPU acceleration, ComfyUI images, or voice? Those optional extras
+are in Part 3.
+
+
+1. INSTALL PYTHON (3.10 OR NEWER)
+---------------------------------
+
+Radix Core requires Python 3.10 or newer (3.10 is the floor because of NumPy
+2.2+). It is developed and tested on Python 3.11 and 3.13, so any of
+3.10 / 3.11 / 3.12 / 3.13 works.
+
+Check what you already have first:
+
+
+python --version
+py -0p
+
+
+(py -0p lists every Python install on the machine.)
+
+If you already see Python 3.10.x or newer, skip ahead to step 2. Otherwise:
+
+1. Download Python from https://www.python.org/downloads/ (3.13 recommended;
+   3.10+ accepted).
+2. Run the installer and check "Add python.exe to PATH" on the first screen.
+3. Verify in a new PowerShell window:
+
+
+python --version
+
+
+You should see Python 3.10.x or newer. If python isn't found, reopen
+PowerShell or re-run the installer with the PATH option checked.
+
+
+2. GET THE CODE
+---------------
+
+If you have the project folder already (e.g.
+C:\Users\<you>\Documents\radix_core), just open PowerShell there. Otherwise
+copy/clone it to a location of your choice, then cd into the radix_core folder:
+
+
+cd C:\Users\<you>\Documents\radix_core
+
+
+All remaining commands are run from this radix_core folder.
+
+
+3. THE VIRTUAL ENVIRONMENT (AUTOMATIC - NOTHING TO DO)
+------------------------------------------------------
+
+Radix Core manages its own virtual environment. The first time you launch it
+(python run.py, or by double-clicking Start Radix Core.bat), it creates a
+.venv in the project folder, installs everything into it, and relaunches itself
+inside that venv. Every later launch sees the venv already exists and starts
+immediately. You never create or activate a venv by hand.
+
+NOTE: Start Radix Core.bat vs run.py: they're the same launch - the .bat is
+just a double-clickable Windows wrapper that finds a working Python, runs
+start_services.py, then runs run.py for you. Use the .bat if you double-click;
+run python run.py directly if you're already in a terminal (services won't
+pre-launch unless you run scripts/start_services.py yourself first).
+
+NOTE: Prefer to manage the venv yourself? You still can - create and activate
+one before launching and Radix Core will use it as-is:
+
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+
+If PowerShell blocks the activate script, run this once, then activate again:
+
+
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+
+4. DEPENDENCIES (INSTALLED FOR YOU)
+-----------------------------------
+
+On that first launch the bootstrap runs pip install -r requirements.txt into
+the venv for you - CustomTkinter, Pillow, llama-cpp-python, the service
+clients, and audio playback libraries - so there's nothing to install manually.
+
+To refresh or reinstall them yourself later:
+
+
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+
+NOTE: On Windows, llama-cpp-python may try to compile from source (slow / may
+need Build Tools). Section 6 installs a prebuilt wheel that avoids this.
+
+
+5. FIRST LAUNCH (MOCK MODE)
+---------------------------
+
+
+python run.py
+
+
+The first run prints a couple of [setup] lines while it builds the venv and
+installs dependencies (this only happens once), then Radix Core opens. With no
+models present, agents reply with [MOCK ...] text - that's expected. The first
+time, a Projects launcher lets you continue, open, or create a project; you
+can reopen the User Guide from ? in the top bar. Explore the editor, Story
+Bible, and Settings now, then continue below to add models.
+
+
+6. GPU ACCELERATION (RECOMMENDED)
+---------------------------------
+
+This makes the AI much faster on an NVIDIA graphics card. If you don't have an
+NVIDIA card, skip this whole section - the app still works on the CPU, just
+slower.
+
+Step 6a - Do you have an NVIDIA GPU, and which CUDA version?
+
+The NVIDIA driver ships with CUDA; you usually do not need to install CUDA
+separately. To check what you have, open a Command Prompt / PowerShell and run:
+
+
+nvidia-smi
+
+
+- If the command isn't recognized: you either don't have an NVIDIA GPU or the
+  driver isn't installed. Install the latest GeForce/Studio driver from
+  https://www.nvidia.com/Download/index.aspx (or via GeForce Experience),
+  reboot, and run nvidia-smi again.
+- If it works: look at the top-right "CUDA Version: XX.X" in the output.
+  That number is the maximum CUDA your driver supports - pick the matching wheel
+  below (round down if there's no exact match).
+
+CUDA version from nvidia-smi -> wheel tag to use:
+  CUDA 12.4 or newer -> cu124
+  CUDA 12.1 - 12.3   -> cu121
+  CUDA 11.x          -> cu118
+
+NOTE: You only need a full CUDA Toolkit install if you plan to compile things
+yourself. For Radix Core the prebuilt wheel below already contains everything,
+so the driver alone is enough.
+
+Step 6b - Install the matching wheel
+
+Install the prebuilt CUDA wheel of llama-cpp-python (no compiling). Swap cu124
+for whichever tag matched your card above:
+
+
+pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+
+Other CUDA tags (swap cu124 in the URL above):
+  cu121 -> https://abetlen.github.io/llama-cpp-python/whl/cu121
+  cu118 -> https://abetlen.github.io/llama-cpp-python/whl/cu118
+
+
+Notes:
+- If CPU-only is fine - skip this step. Generation is slower and n_gpu_layers
+  is ignored.
+- If a wheel for your exact CUDA tag isn't available, try the next lower tag
+  (cu124 -> cu121 -> cu118); the driver is backward compatible.
+- If you run out of VRAM later, lower n_gpu_layers (e.g. to 20) and/or n_ctx
+  in Settings -> Models.
+
+
+7. GET THE MODELS
+-----------------
+
+Radix Core uses three GGUF models (one loaded at a time). The expected filenames
+live in config.py:
+
+- deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf  (Tier 1 - architect)
+- Qwen3-8B-Q4_K_M.gguf                                (Tier 2 - operator)
+- L3-8B-Stheno-v3.2-Q4_K_M.gguf                       (Tier 3 - flavor)
+
+Option A - automatic download
+
+Easiest: double-click get_models.bat. Or run it with the venv's Python:
+
+
+.venv\Scripts\python.exe scripts/download_models.py
+
+
+This fetches the GGUFs into models/ (about 15 GB; requires huggingface_hub,
+which is already in requirements.txt).
+
+Option B - manual download
+
+Download each file and save it into models/ using exactly the local filename
+listed above. The remote filename on Hugging Face may differ - rename on save
+where noted.
+
+Architect (Tier 1) - deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf
+  Repo page:
+  https://huggingface.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF
+  Direct download (remote name DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf):
+  https://huggingface.co/unsloth/DeepSeek-R1-0528-Qwen3-8B-GGUF/resolve/main/DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf?download=true
+
+Operator (Tier 2) - Qwen3-8B-Q4_K_M.gguf
+  Repo page:
+  https://huggingface.co/Qwen/Qwen3-8B-GGUF
+  Direct download:
+  https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf?download=true
+
+Flavor (Tier 3) - L3-8B-Stheno-v3.2-Q4_K_M.gguf
+  Repo page:
+  https://huggingface.co/bartowski/L3-8B-Stheno-v3.2-GGUF
+  Direct download:
+  https://huggingface.co/bartowski/L3-8B-Stheno-v3.2-GGUF/resolve/main/L3-8B-Stheno-v3.2-Q4_K_M.gguf?download=true
+
+If you use different filenames, update the paths in Settings -> Models (or
+config.py).
+
+Restart the app. Agents will now use the real models instead of mock replies.
+
+NOTE: VRAM: each about 8B Q4 model is about 4.6 GB, so no two fit in 8 GB at
+once - single-slot loading is mandatory and switching tiers swaps the resident
+model. To co-resident two tiers, set the Flavor tier to a smaller 3-4B GGUF in
+Settings -> Models.
+
+
+DISK SPACE
+----------
+
+Plan for free space based on what you actually use. Sizes are approximate.
+
+  Core app + Python venv ........................ about 2 GB
+  LLM writing models (the three GGUFs) .......... about 15 GB
+  Writing-only subtotal ......................... about 20 GB
+  ComfyUI install ............................... about 3-5 GB
+  Image models for the bundled workflow ......... about 25 GB
+  AllTalk + voices .............................. a few GB
+  Full image + voice subtotal ................... about 50-60 GB
+
+The image models are the big ones: flux-2-klein-9b-fp8mixed (about 9-10 GB),
+qwen_3_8b_fp8mixed text encoder (about 9 GB), ponyRealism_V23ULTRA (about 6.5
+GB), flux2-vae (about 0.3 GB), and 4x-UltraSharp (about 0.07 GB).
+
+
+PART 3 - OPTIONAL EXTRAS: IMAGES AND VOICE
+==========================================
+
+These add AI image generation (ComfyUI) and spoken audio (TTS). They are
+completely optional - skip them if you just want the writing features.
+
+
+8. SERVICE SETUP AND SYNC ASSETS (THE HUB)
+------------------------------------------
+
+Radix Core is a hub that drives your separately-running ComfyUI and AllTalk
+processes - it never bundles or modifies their environments. The Setup panel
+(top bar -> Setup, or the ... More drawer on a narrow window) is the one place
+to wire them up:
+
+1. Enter the Server URL and Install folder for ComfyUI and AllTalk (use
+   Browse), plus the Piper exe/voice if you use Piper. Click Save.
+2. Click Test now - each service shows a green (connected) or red dot. The
+   top bar runs a heartbeat that keeps these dots current automatically.
+3. Use Launch AllTalk / Launch ComfyUI to start a service from the install
+   folder you set (each opens in its own console window).
+4. Click Preview under "Sync assets" for a dry run, then Sync Assets to push
+   bundled voices (and, optionally, nodes/workflows) into the folders you set.
+   Sync is copy-only and non-destructive.
+
+What auto-starts
+
+- When you use Start Radix Core.bat, scripts/start_services.py runs first in a
+  console: it starts AllTalk if needed, probes ComfyUI, and reports Piper.
+- AllTalk also auto-launches from inside the app at startup if it isn't already
+  running and you've set its install folder (Radix looks for a start script like
+  start_alltalk.bat). If C:\AllTalkV2\alltalk_tts exists, Radix may set that
+  folder automatically on first service startup.
+- ComfyUI is NOT auto-started - launch it yourself (or use Launch ComfyUI in
+  Setup). Radix tells you when it isn't running.
+- Piper needs nothing launched - it's a per-call command-line tool, not a
+  server.
+
+On first launch, if a service isn't reachable, Setup opens automatically.
+
+What gets synced
+
+The source is always Radix's own folders (radix_core/assets and
+radix_core/workflows) - nothing is downloaded. The default workflow is already
+wired and sent to ComfyUI over the API (no copy needed), and custom nodes are
+best installed with ComfyUI Manager. So the main use of Sync is voices:
+
+- assets/voices/* -> <AllTalk>/voices/ (primary use)
+- workflows/*.json -> <ComfyUI>/user/default/workflows/ (optional - only if you
+  want to edit the graph inside ComfyUI; not required at runtime)
+- assets/comfyui/custom_nodes/<node>/ -> <ComfyUI>/custom_nodes/ (optional /
+  advanced - prefer ComfyUI Manager, below)
+
+Heartbeat interval
+
+The top bar re-checks service health every 30 seconds by default. Change it in
+Settings -> Services -> Heartbeat interval (seconds) (minimum 5).
+
+
+9. IMAGE GENERATION WITH COMFYUI (OPTIONAL)
+-------------------------------------------
+
+Radix Core talks to a ComfyUI server you run separately. The image workflow is
+already bundled - you don't copy any workflow file. You only need to give
+ComfyUI the custom nodes and model files it references.
+
+1. Install ComfyUI and start it (default http://127.0.0.1:8188), then set its
+   URL + install folder in the Setup panel and Test it (dot turns green).
+   You can use Launch ComfyUI in Setup to start it from that folder.
+2. Install ComfyUI Manager (strongly recommended - it makes the next step one
+   click):
+   - Easiest: use the ComfyUI Desktop app, which already includes Manager, or
+   - Clone it into ComfyUI's custom_nodes:
+     git clone https://github.com/ltdrdata/ComfyUI-Manager into
+     <ComfyUI>\custom_nodes\, then restart ComfyUI.
+3. The workflow is bundled as radix_core\workflows\default_workflow.json and
+   is already selected in Settings -> Image. There's nothing to copy.
+   (An editable graph copy, pony_flux2_graph.json, is included for reference -
+   it isn't used at runtime.)
+4. Install the custom nodes the bundled workflow needs. In ComfyUI, open
+   Manager -> Install Missing Custom Nodes - it scans the loaded workflow and
+   installs them for you. The two packs required are:
+   - rgthree-comfy (Power Lora Loader (rgthree), Image Comparer (rgthree))
+   - ComfyUI-Easy-Use (easy globalSeed, easy cleanGpuUsed)
+   Everything else in the workflow is ComfyUI core.
+5. Place the model files the workflow references into ComfyUI's models\
+   folders (download these yourself; they're large). Direct links below.
+
+   UNET - flux-2-klein-9b-fp8mixed.safetensors
+     -> models\unet\ (UNETLoader), about 9-10 GB
+     Repo: https://huggingface.co/silveroxides/FLUX.2-dev-fp8_scaled
+     Download:
+     https://huggingface.co/silveroxides/FLUX.2-dev-fp8_scaled/resolve/main/flux-2-klein-9b-fp8mixed.safetensors?download=true
+     NOTE: The official BFL repo (black-forest-labs/FLUX.2-klein-9b-fp8) ships
+     flux-2-klein-9b-fp8.safetensors instead - gated, requires HF login + license
+     accept. You would need to rename it or edit the workflow to match.
+
+   Text encoder (CLIP) - qwen_3_8b_fp8mixed.safetensors
+     -> models\text_encoders\ (CLIPLoader), about 9 GB
+     Repo: https://huggingface.co/Comfy-Org/flux2-klein-9B
+     Download:
+     https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/text_encoders/qwen_3_8b_fp8mixed.safetensors?download=true
+
+   VAE - flux2-vae.safetensors
+     -> models\vae\ (VAELoader), about 0.3 GB
+     Repo: https://huggingface.co/Comfy-Org/flux2-klein-9B
+     Download:
+     https://huggingface.co/Comfy-Org/flux2-klein-9B/resolve/main/split_files/vae/flux2-vae.safetensors?download=true
+     (Same file also in Comfy-Org/flux2-dev under split_files/vae/.)
+
+   Checkpoint - ponyRealism_V23ULTRA.safetensors
+     -> models\checkpoints\ (CheckpointLoaderSimple), about 6.5 GB
+     Repo: https://huggingface.co/Osrivers/ponyRealism_V23ULTRA.safetensors
+     Download:
+     https://huggingface.co/Osrivers/ponyRealism_V23ULTRA.safetensors/resolve/main/ponyRealism_V23ULTRA.safetensors?download=true
+
+   Upscaler - 4x-UltraSharp.safetensors
+     -> models\upscale_models\ (UpscaleModelLoader), about 0.07 GB
+     Repo: https://huggingface.co/Kim2091/UltraSharp
+     Download:
+     https://huggingface.co/Kim2091/UltraSharp/resolve/main/4x-UltraSharp.safetensors?download=true
+
+6. Optional: a starter styles.csv is bundled at radix_core\assets\styles.csv
+   and pre-wired (Settings -> Services). It feeds per-lore prompt blocks into a
+   "Load Styles CSV" node. The bundled workflow has no such node, so it's a no-op
+   there - kept for workflows that do use one. Editing it is optional.
+
+Generate from the Image Gen panel, per-entry in the Lorebook, or via Visualize
+in the editor.
+
+
+10. VOICE / TTS (OPTIONAL)
+--------------------------
+
+Choose the engine in Settings -> Services:
+
+- AllTalk: set the URL (default http://127.0.0.1:7851) + install folder in
+  Setup, and Test. Radix auto-launches AllTalk at startup if it isn't already
+  running (and you can use Launch AllTalk in Setup any time). Use Sync Assets
+  to push bundled voices into <AllTalk>/voices/.
+- Piper: run the setup script (easiest):
+
+
+  .venv\Scripts\python.exe scripts/setup_piper.py
+
+
+  That downloads piper.exe and the en_US-amy-medium voice into
+  assets\piper\. Manual download URLs:
+
+  Piper Windows binary (piper.exe inside the zip):
+  https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_windows_amd64.zip
+
+  Voice repo: https://huggingface.co/rhasspy/piper-voices
+  en_US-amy-medium.onnx:
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx?download=true
+  en_US-amy-medium.onnx.json:
+  https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json?download=true
+
+  Or copy piper.exe and a voice into radix_core\assets\piper\ manually, or point
+  the paths at your existing install. Piper is a per-call command-line tool, so
+  there's nothing to launch - it just runs when needed.
+
+AllTalk uses its own voice models from your AllTalk install (default URL
+http://127.0.0.1:7851). Radix can sync files from assets/voices/ into
+<AllTalk>/voices/ via Setup -> Sync Assets; that folder starts empty.
+
+Playback uses the built-in winsound on Windows. Use the Voice panel, the editor
+Listen button, or Speak on the Agents panel.
+
+
+11. DAY-TO-DAY: LAUNCHING AGAIN
+-------------------------------
+
+The simplest way is to double-click Start Radix Core.bat. It ensures the .venv
+exists, runs scripts/start_services.py in a console (AllTalk / ComfyUI / Piper
+status), then opens the app - no manual activation needed.
+
+Equivalently, from a terminal in the radix_core folder:
+
+
+python run.py
+
+
+(run.py reuses the existing .venv automatically. To also pre-launch services
+from a terminal, run scripts/start_services.py first, or use the .bat.)
+
+
+12. TROUBLESHOOTING
+-------------------
+
+- python not recognized: reinstall Python with "Add to PATH" checked, or reopen
+  PowerShell.
+- Can't activate the venv (...Activate.ps1 cannot be loaded): run
+  Set-ExecutionPolicy -Scope CurrentUser RemoteSigned, then activate again.
+- llama-cpp-python build errors: install the prebuilt CUDA wheel from step 6
+  instead of building from source.
+- Everything is [MOCK ...]: no models found - check models/ filenames against
+  config.py / Settings -> Models. See section 7 for download URLs.
+- ComfyUI connected but no images: confirm all five workflow model files are in
+  the correct ComfyUI models\ subfolders (section 9, step 5).
+- Out of VRAM / crashes on load: lower n_gpu_layers and/or n_ctx in Settings ->
+  Models; consider a smaller Flavor-tier model.
+- Service dot stays red: confirm the service is running and the URL in the Setup
+  panel is right; click Test now. The dot also refreshes on the heartbeat
+  (Settings -> Services -> Heartbeat interval).
+- Sync Assets says "blocked": set the ComfyUI/AllTalk install folder in Setup,
+  and make sure you actually placed assets in assets/comfyui/custom_nodes/,
+  workflows/, or assets/voices/.
+- No images: ComfyUI not running (start it / use Launch ComfyUI), wrong URL,
+  missing custom nodes (run Manager -> Install Missing Custom Nodes), or a model
+  file from section 9 isn't in ComfyUI's models\ folders.
+- No voice: AllTalk URL unreachable, or run scripts/setup_piper.py (or place
+  piper.exe + voice in assets/piper/).
+- App won't start: run python run.py from the radix_core folder and read the
+  console error (it sets up/uses the .venv automatically).
+
+For how to actually use everything once it's running, see USER_GUIDE.txt (also
+available in-app via the ? button).

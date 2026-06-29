@@ -1,0 +1,15 @@
+# Models (large GGUF weights)
+models/*.gguf
+
+# Runtime project data (regenerated on launch)
+data/
+
+# Manually-installed assets (run scripts/setup_piper.py)
+assets/piper/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/

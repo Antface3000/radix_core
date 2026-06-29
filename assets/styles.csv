@@ -1,0 +1,5 @@
+name,prompt,negative_prompt
+Cinematic,"cinematic lighting, dramatic shadows, film grain, shallow depth of field, 35mm","flat lighting, snapshot, low contrast"
+Painterly,"oil painting, visible brush strokes, rich color, classical composition","photo, 3d render, plastic"
+Anime,"anime style, clean line art, vibrant colors, cel shading","photorealistic, grainy, washed out"
+Noir,"black and white, high contrast, moody, deep shadows, vintage","colorful, bright, cheerful"
