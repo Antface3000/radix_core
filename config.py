@@ -21,6 +21,19 @@ WORKFLOWS_DIR = os.path.join(BASE_DIR, "workflows")
 THEME_PATH = os.path.join(ASSETS_DIR, "theme", "radix_theme.json")
 USER_GUIDE_PATH = os.path.join(BASE_DIR, "USER_GUIDE.txt")
 INSTALL_PATH = os.path.join(BASE_DIR, "INSTALL.txt")
+CHANGELOG_PATH = os.path.join(BASE_DIR, "CHANGELOG.txt")
+VERSION_PATH = os.path.join(BASE_DIR, "VERSION")
+VERSION_JSON_PATH = os.path.join(BASE_DIR, "version.json")
+REPO_SLUG = "Antface3000/radix_core"
+RELEASES_URL = f"https://github.com/{REPO_SLUG}/releases/latest"
+
+
+def _read_version():
+    try:
+        with open(VERSION_PATH, "r", encoding="utf-8") as fh:
+            return fh.read().strip() or "0.0.0"
+    except OSError:
+        return "0.0.0"
 
 # --- Model registry ---------------------------------------------------------
 # Drop the .gguf files in models/ (or run scripts/download_models.py).
@@ -136,7 +149,7 @@ EDITOR_WORD_GOAL = 1000
 
 # --- UI ---------------------------------------------------------------------
 APP_TITLE = "Radix Core"
-APP_VERSION = "0.1.0"
+APP_VERSION = _read_version()
 APP_GEOMETRY = "1280x820"
 APPEARANCE_MODE = "dark"        # "dark" | "light" | "system"
 COLOR_THEME = "radix"           # custom theme (THEME_PATH) or a CTk built-in

@@ -27,6 +27,7 @@ class FocusPanel(BasePanel):
         self._build_parking(self.tabs.tab("Parking Lot"))
         self._build_quickadd(self.tabs.tab("Quick Add"))
         self._build_preflight(self.tabs.tab("Pre-Flight"))
+        theme.style_tabview(self.tabs)
         self.on_show()
 
     def _paths(self):

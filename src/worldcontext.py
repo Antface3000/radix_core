@@ -15,6 +15,18 @@ import re
 
 from src import story_bible, world_state, lore
 
+# Shared bible field order (single source of truth for agent + editor context).
+BIBLE_FIELD_ORDER = (
+    ("Premise", "premise"),
+    ("Logline", "logline"),
+    ("Genre & Tone", "genreTone"),
+    ("Point of View", "pointOfView"),
+    ("Tense", "tense"),
+    ("World Rules", "worldRules"),
+    ("Style Notes", "styleNotes"),
+    ("Synopsis", "synopsis"),
+)
+
 # Marker tag -> lore entry kind. The generic REMEMBER routes to the persona's
 # own capture_kind (handled in engine).
 CAPTURE_MARKERS = {
@@ -52,34 +64,71 @@ def _bullet_list(items, limit=12):
     return "\n".join(out)
 
 
-def assemble(paths, max_chars=6000):
+def format_bible(bible, max_chars=None):
+    """Format story bible dict as labeled lines."""
+    parts = []
+    for label, key in BIBLE_FIELD_ORDER:
+        if key == "themes":
+            continue
+        val = bible.get(key)
+        val = (val or "").strip() if isinstance(val, str) else val
+        if val:
+            parts.append(f"{label}: {val}")
+    if bible.get("themes"):
+        themes = bible["themes"]
+        parts.append("Themes: " + (", ".join(themes) if isinstance(themes, list) else str(themes)))
+    text = "\n".join(parts)
+    if max_chars and len(text) > max_chars:
+        text = text[:max_chars] + "\n...(bible trimmed)..."
+    return text
+
+
+def _pinned_lore(book):
+    canon = [e for e in (book["characters"] + book["world"])
+             if e.get("alwaysInclude") or e.get("pinned")]
+    canon.sort(key=lambda e: (not e.get("alwaysInclude"), -(e.get("priority") or 0)))
+    return canon
+
+
+def summarize_injection(paths):
+    """Short summary for UI: char count, filled bible labels, pinned lore count."""
+    if not paths:
+        return {"chars": 0, "labels": [], "pinned_lore": 0, "empty": True}
+    bible = story_bible.read(paths["bible"])
+    book = lore.read(paths["lore"])
+    labels = []
+    for label, key in BIBLE_FIELD_ORDER:
+        val = bible.get(key)
+        if isinstance(val, str) and val.strip():
+            labels.append(label)
+    if bible.get("themes"):
+        labels.append("Themes")
+    pinned = len(_pinned_lore(book))
+    text = assemble(paths, max_chars=None)
+    empty = len(labels) == 0 and pinned == 0 and "No setting configured" in text
+    return {
+        "chars": len(text),
+        "labels": labels,
+        "pinned_lore": pinned,
+        "empty": empty,
+    }
+
+
+def assemble(paths, max_chars=6000, exclude_bible_keys=None):
     """Build the SETTING system block for the project at `paths`."""
     bible = story_bible.read(paths["bible"])
+    if exclude_bible_keys:
+        bible = {**bible, **{k: "" for k in exclude_bible_keys}}
     world = world_state.read(paths["world_state"])
     book = lore.read(paths["lore"])
 
     parts = ["=== SETTING (established canon - treat as ground truth) ==="]
 
-    def add(label, value):
-        value = (value or "").strip() if isinstance(value, str) else value
-        if value:
-            parts.append(f"{label}: {value}")
+    bible_text = format_bible(bible)
+    if bible_text:
+        parts.append(bible_text)
 
-    add("Premise", bible.get("premise"))
-    add("Logline", bible.get("logline"))
-    add("Genre & Tone", bible.get("genreTone"))
-    if bible.get("themes"):
-        add("Themes", ", ".join(bible["themes"]))
-    add("Point of View", bible.get("pointOfView"))
-    add("Tense", bible.get("tense"))
-    add("World Rules", bible.get("worldRules"))
-    add("Style Notes", bible.get("styleNotes"))
-
-    # Pinned / always-include lore.
-    canon = [e for e in (book["characters"] + book["world"])
-             if e.get("alwaysInclude") or e.get("pinned")]
-    canon.sort(key=lambda e: (not e.get("alwaysInclude"),
-                              -(e.get("priority") or 0)))
+    canon = _pinned_lore(book)
     if canon:
         parts.append("\n--- KEY LORE ---")
         for e in canon[:20]:
@@ -91,7 +140,6 @@ def assemble(paths, max_chars=6000):
                 line += f": {body}"
             parts.append(line)
 
-    # Current world state.
     ws_lines = []
     if world.get("currentDate"):
         ws_lines.append(f"- Current date: {world['currentDate']}")
@@ -108,7 +156,6 @@ def assemble(paths, max_chars=6000):
 
     text = "\n".join(parts).strip()
     if len(parts) == 1:
-        # Nothing configured yet - keep agents generic but honest.
         text += "\n(No setting configured yet. Use the Story Bible panel to "
         text += "define the world.)"
     if max_chars and len(text) > max_chars:
@@ -119,7 +166,6 @@ def assemble(paths, max_chars=6000):
 def _name_from_block(block):
     """Derive an entry name from a captured block's first line/sentence."""
     first = block.strip().splitlines()[0].strip() if block.strip() else "Note"
-    # If "Name: details" form, take the name part.
     if ":" in first and len(first.split(":", 1)[0]) <= 60:
         first = first.split(":", 1)[0]
     first = re.sub(r"^[#*\-\s]+", "", first)
@@ -127,12 +173,7 @@ def _name_from_block(block):
 
 
 def capture_to_lore(paths, raw_text, default_kind="world", source="agent"):
-    """Extract tagged blocks from `raw_text` and append them to lore.json.
-
-    Category markers ([[CHARACTER]], [[WORLD]], ...) set the kind; the generic
-    [[REMEMBER]] marker uses `default_kind` (the persona's capture_kind).
-    Returns the list of created entry dicts.
-    """
+    """Extract tagged blocks from `raw_text` and append them to lore.json."""
     if not raw_text:
         return []
     created = []
@@ -150,7 +191,7 @@ def capture_to_lore(paths, raw_text, default_kind="world", source="agent"):
             })
             created.append(entry)
 
-    if default_kind:  # generic REMEMBER -> persona's home kind
+    if default_kind:
         for match in _GENERIC_RE.finditer(raw_text):
             block = match.group(1).strip()
             if not block:

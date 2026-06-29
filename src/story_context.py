@@ -9,7 +9,9 @@ All functions are pure given the project `paths` dict (from projects.project_pat
 so they are easy to call from the GUI thread or a worker thread.
 """
 
+import config
 from src import story_bible, outline, lore, world_state
+from src.worldcontext import format_bible
 
 DEFAULT_WRITE_SYSTEM = (
     "You are a skilled ghostwriter continuing a work of fiction. Write vivid, "
@@ -24,7 +26,7 @@ _NEUTRAL_VOICE = ("Write clear, grounded literary prose. Vary sentence rhythm; "
                   "avoid cliche and purple excess.")
 
 # Budgets (characters).
-_BIBLE_CHARS = 1400
+_BIBLE_CHARS = 2400
 _OUTLINE_CHARS = 1000
 _LORE_CHARS = 2200
 _AUTHOR_CHARS = 800
@@ -96,19 +98,7 @@ def _lore_summary(entries, max_chars=_LORE_CHARS):
 # ======================= section builders ==================================
 def _bible_block(paths, max_chars=_BIBLE_CHARS):
     b = story_bible.read(paths["bible"])
-    parts = []
-    for label, key in (("Premise", "premise"), ("Logline", "logline"),
-                       ("Genre/Tone", "genreTone"), ("Point of View", "pointOfView"),
-                       ("Tense", "tense"), ("World Rules", "worldRules"),
-                       ("Style Notes", "styleNotes")):
-        val = b.get(key)
-        if val:
-            parts.append(f"{label}: {val}")
-    if b.get("themes"):
-        themes = b["themes"]
-        parts.append("Themes: " + (", ".join(themes) if isinstance(themes, list)
-                                   else str(themes)))
-    return "\n".join(parts)[:max_chars]
+    return format_bible(b, max_chars=max_chars)
 
 
 def _outline_block(paths, chapter_id, max_chars=_OUTLINE_CHARS):

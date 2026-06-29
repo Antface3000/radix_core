@@ -45,6 +45,7 @@ class AgentEngine:
         # Quick toggles mirror settings; GUI may flip them at runtime.
         self.context_inject = self.settings.get("context.inject", True)
         self.context_auto_capture = self.settings.get("context.auto_capture", True)
+        self.flush_callback = None  # optional GUI hook: flush unsaved story data
 
         self.project_id = None
         self.paths = None
@@ -123,10 +124,18 @@ class AgentEngine:
                 or self.settings.get("generation.max_tokens",
                                      config.DEFAULT_MAX_TOKENS))
 
+    def _flush_context(self):
+        if callable(self.flush_callback):
+            try:
+                self.flush_callback()
+            except Exception:
+                pass
+
     # ----------------------- inference -------------------------------------
     def execute_task(self, persona_identifier, user_input, show_think=False,
                      max_tokens=None):
         """Run one persona and return the (cleaned) response text."""
+        self._flush_context()
         p = self._resolve_persona(persona_identifier)
         messages = self._build_messages(p, user_input)
         chunks = list(self._stream_generate(p, messages, show_think, max_tokens))
@@ -137,6 +146,7 @@ class AgentEngine:
     def stream_task(self, persona_identifier, user_input, show_think=False,
                     max_tokens=None):
         """Generator yielding visible text deltas as they are produced."""
+        self._flush_context()
         p = self._resolve_persona(persona_identifier)
         messages = self._build_messages(p, user_input)
         for delta in self._stream_generate(p, messages, show_think, max_tokens):
@@ -203,6 +213,7 @@ class AgentEngine:
         provided and HITL is enabled, the Liaison gathers requirements before
         planning and checks in before synthesis.
         """
+        self._flush_context()
         manager = self._resolve_persona(
             self.settings.get("orchestration.manager_key", "manager"))
         hitl = bool(self.settings.get("orchestration.hitl", False)) and callable(ask_user)
@@ -218,10 +229,14 @@ class AgentEngine:
                 yield ("step", liaison, "Gather requirements from the user.")
                 msgs = self._compose([
                     ("system", liaison["system_prompt"]),
-                    ("user", "The user wants to: " + task +
-                     "\n\nAsk up to 3 focused clarifying questions before the "
-                     "team begins. If the request is already clear, say so."),
                 ])
+                setting = self._setting_block()
+                if setting:
+                    msgs.append({"role": "system", "content": setting})
+                msgs.append({"role": "user", "content":
+                    "The user wants to: " + task +
+                     "\n\nAsk up to 3 focused clarifying questions before the "
+                     "team begins. If the request is already clear, say so."})
                 for delta in self._stream_generate(liaison, msgs, show_think):
                     yield ("delta", liaison, delta)
                 _, questions = self._last_generation
@@ -300,7 +315,12 @@ class AgentEngine:
             f"TASK:\n{task}\n\nAVAILABLE AGENTS (key: role):\n{roster}\n\n"
             "Return ONLY the JSON plan."
         )
-        messages = self._compose([("system", planner_sys), ("user", planner_user)])
+        pairs = [("system", planner_sys)]
+        setting = self._setting_block()
+        if setting:
+            pairs.append(("system", setting))
+        pairs.append(("user", planner_user))
+        messages = self._compose(pairs)
         text = "".join(self._stream_generate(manager, messages, show_think=False))
         plan = self._parse_plan(text)
         return plan or self._default_plan(task)
@@ -396,7 +416,12 @@ class AgentEngine:
         for name, out in working:
             user += f"\n[{name}]:\n{out}\n"
         user += "\nProduce the final result."
-        return self._compose([("system", system), ("user", user)])
+        pairs = [("system", system)]
+        setting = self._setting_block()
+        if setting:
+            pairs.append(("system", setting))
+        pairs.append(("user", user))
+        return self._compose(pairs)
 
     # ----------------------- persistence -----------------------------------
     def _finalize(self, persona, user_input):
@@ -465,6 +490,7 @@ class AgentEngine:
         Used by the editor AI pipelines, which assemble their own context via
         src/story_context.py. Yields visible text deltas.
         """
+        self._flush_context()
         pseudo = {"model_key": model_key, "temperature": temperature,
                   "display_name": "Editor", "capture_kind": None}
         messages = self._compose([("system", system_prompt),

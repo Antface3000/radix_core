@@ -42,6 +42,7 @@ class MusicPanel(BasePanel):
         self.tabs.add("Deezer")
         self._build_local(self.tabs.tab("Local"))
         self._build_deezer(self.tabs.tab("Deezer"))
+        theme.style_tabview(self.tabs)
 
     # ----------------------- local player ----------------------------------
     def _build_local(self, tab):

@@ -8,7 +8,7 @@ import customtkinter as ctk
 from gui import theme
 from gui.panels.base import BasePanel
 from gui.tooltip import attach
-from src import personas
+from src import personas, worldcontext
 
 _TIER_TAG = {
     personas.TIER_ARCHITECT: "T1",
@@ -28,7 +28,7 @@ class AgentsPanel(BasePanel):
         self.last_response = ""
         self.last_persona = ""
 
-        self.grid_rowconfigure(3, weight=1)
+        self.grid_rowconfigure(4, weight=1)
         self.header("Agents", "Chat with one agent or let the Manager orchestrate the team.")
         self._build_controls()
         self._build_chat()
@@ -67,16 +67,29 @@ class AgentsPanel(BasePanel):
                                  text_color=theme.TEXT_MUTED,
                                  font=ctk.CTkFont(size=12))
         self.info.grid(row=2, column=0, sticky="ew", padx=22, pady=(0, 2))
+        setting_row = ctk.CTkFrame(self, fg_color="transparent")
+        setting_row.grid(row=3, column=0, sticky="ew", padx=22, pady=(0, 4))
+        setting_row.grid_columnconfigure(0, weight=1)
+        self.setting_lbl = ctk.CTkLabel(
+            setting_row, text="", anchor="w", justify="left",
+            text_color=theme.TEXT_MUTED, font=ctk.CTkFont(size=11))
+        self.setting_lbl.grid(row=0, column=0, sticky="ew")
+        self.preview_btn = ctk.CTkButton(
+            setting_row, text="Preview", width=72, command=self._preview_setting,
+            **theme.secondary_btn())
+        self.preview_btn.grid(row=0, column=1, padx=(8, 0))
+        attach(self.preview_btn, "Show the SETTING block injected into agent prompts.")
         self.bind("<Configure>", lambda e: self.info.configure(
             wraplength=max(200, e.width - 48)))
+        self._refresh_setting_status()
 
     def _build_chat(self):
         self.chat = ctk.CTkTextbox(self, wrap="word", font=("Consolas", 13))
-        self.chat.grid(row=3, column=0, sticky="nsew", padx=16, pady=6)
+        self.chat.grid(row=4, column=0, sticky="nsew", padx=16, pady=6)
         self.chat.configure(state="disabled")
 
         bottom = ctk.CTkFrame(self, fg_color="transparent")
-        bottom.grid(row=4, column=0, sticky="ew", padx=16, pady=(0, 6))
+        bottom.grid(row=5, column=0, sticky="ew", padx=16, pady=(0, 6))
         bottom.grid_columnconfigure(0, weight=1)
         self.entry = ctk.CTkEntry(bottom, placeholder_text="Message the agent(s)...")
         self.entry.grid(row=0, column=0, sticky="ew", padx=(0, 6), pady=6)
@@ -92,7 +105,7 @@ class AgentsPanel(BasePanel):
 
         self.status = ctk.CTkLabel(self, text="Ready.", anchor="w",
                                    text_color=theme.TEXT_MUTED)
-        self.status.grid(row=5, column=0, sticky="ew", padx=22, pady=(0, 8))
+        self.status.grid(row=6, column=0, sticky="ew", padx=22, pady=(0, 8))
 
     # ----------------------- persona data ----------------------------------
     def _refresh_personas(self):
@@ -112,6 +125,46 @@ class AgentsPanel(BasePanel):
     def on_project_change(self):
         self._refresh_personas()
         self.inject.set(self.app.engine.context_inject)
+        self._refresh_setting_status()
+
+    def on_show(self):
+        self._refresh_setting_status()
+
+    def _refresh_setting_status(self):
+        if not self.inject.get():
+            self.setting_lbl.configure(text="Setting injection OFF")
+            return
+        paths = self.app.engine.paths
+        if not paths:
+            self.setting_lbl.configure(text="Setting: no active project")
+            return
+        info = worldcontext.summarize_injection(paths)
+        if info["empty"]:
+            self.setting_lbl.configure(
+                text="Setting: empty — fill Story Bible and save (or pin lore entries)")
+            return
+        labels = ", ".join(info["labels"][:4])
+        if len(info["labels"]) > 4:
+            labels += ", ..."
+        lore_part = f", {info['pinned_lore']} pinned lore" if info["pinned_lore"] else ""
+        self.setting_lbl.configure(
+            text=f"Setting: {info['chars']:,} chars ({labels}{lore_part})")
+
+    def _preview_setting(self):
+        paths = self.app.engine.paths
+        if not paths:
+            return
+        text = worldcontext.assemble(
+            paths,
+            max_chars=self.app.settings.get("context.inject_max_chars", 6000))
+        win = ctk.CTkToplevel(self)
+        win.title("Injected setting preview")
+        win.geometry("640x480")
+        win.configure(fg_color=theme.BG_APP)
+        box = ctk.CTkTextbox(win, wrap="word", font=("Consolas", 12))
+        box.pack(fill="both", expand=True, padx=12, pady=12)
+        box.insert("1.0", text)
+        box.configure(state="disabled")
 
     def _current_persona(self):
         return self.by_value.get(self.persona_menu.get())
@@ -128,6 +181,7 @@ class AgentsPanel(BasePanel):
     def _toggle_inject(self):
         self.app.engine.context_inject = self.inject.get()
         self.app.settings.set("context.inject", self.inject.get())
+        self._refresh_setting_status()
         self.status.configure(text=f"Setting injection {'ON' if self.inject.get() else 'OFF'}.")
 
     # ----------------------- run -------------------------------------------

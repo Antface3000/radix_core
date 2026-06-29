@@ -28,10 +28,77 @@ class GenerateRegistry:
             self._open = None
 
 
+def refresh_textbox_scroll(textbox):
+    """Show scrollbars when content overflows."""
+    if isinstance(textbox, ctk.CTkTextbox):
+        textbox._check_if_scrollbars_needed()
+
+
+def _bind_textbox_scroll(textbox):
+    """Keep scrollbars in sync and allow mouse wheel while focused."""
+    refresh_textbox_scroll(textbox)
+
+    def _on_change(_event=None):
+        refresh_textbox_scroll(textbox)
+
+    tb = textbox._textbox
+    tb.bind("<KeyRelease>", _on_change, add="+")
+    tb.bind("<ButtonRelease-1>", _on_change, add="+")
+
+    def _wheel(event):
+        if event.delta:
+            textbox._textbox.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif event.num == 4:
+            textbox._textbox.yview_scroll(-3, "units")
+        elif event.num == 5:
+            textbox._textbox.yview_scroll(3, "units")
+        return "break"
+
+    for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+        tb.bind(seq, _wheel, add="+")
+
+
+def _add_resize_grip(parent, row, textbox, min_height, max_height):
+    """Thin drag handle under a textbox to resize its height."""
+    grip = ctk.CTkFrame(parent, height=6, corner_radius=3,
+                        fg_color=theme.BORDER, cursor="sb_v_double_arrow")
+    grip.grid(row=row, column=0, sticky="ew", pady=(2, 0))
+    attach(grip, "Drag to resize this field vertically.")
+
+    state = {"y": 0, "h": textbox.cget("height")}
+
+    def _start(event):
+        state["y"] = event.y_root
+        state["h"] = textbox.cget("height")
+
+    def _drag(event):
+        delta = event.y_root - state["y"]
+        if not delta:
+            return
+        state["y"] = event.y_root
+        new_h = max(min_height, min(max_height, state["h"] + delta))
+        state["h"] = new_h
+        textbox.configure(height=new_h)
+        refresh_textbox_scroll(textbox)
+
+    def _hover_in(_event):
+        grip.configure(fg_color=theme.BORDER_ACTIVE)
+
+    def _hover_out(_event):
+        grip.configure(fg_color=theme.BORDER)
+
+    for widget in (grip,):
+        widget.bind("<ButtonPress-1>", _start)
+        widget.bind("<B1-Motion>", _drag)
+        widget.bind("<Enter>", _hover_in)
+        widget.bind("<Leave>", _hover_out)
+
+
 class FieldGenerateBlock(ctk.CTkFrame):
     """Label + target widget + collapsible Generate prompt row."""
 
-    def __init__(self, master, app, field_label, multiline=True, height=70,
+    def __init__(self, master, app, field_label, multiline=True, height=100,
+                 min_height=64, max_height=400, resizable=True,
                  context_fn=None, registry=None):
         super().__init__(master, fg_color="transparent")
         self.app = app
@@ -42,13 +109,15 @@ class FieldGenerateBlock(ctk.CTkFrame):
         self._expanded = False
         self._queue = queue.Queue()
         self._append_mode = False
+        self._prompt_row = 3 if (multiline and resizable) else 2
 
         self.grid_columnconfigure(0, weight=1)
 
-        if multiline:
-            self.widget = ctk.CTkTextbox(self, height=height, wrap="word")
-        else:
-            self.widget = ctk.CTkEntry(self)
+        # CTkTextbox for all fields — compact single-line style still wraps/scrolls.
+        box_h = height if multiline else max(height, 42)
+        self.widget = ctk.CTkTextbox(self, height=box_h, wrap="word",
+                                     activate_scrollbars=True)
+        _bind_textbox_scroll(self.widget)
 
         head = ctk.CTkFrame(self, fg_color="transparent")
         head.grid(row=0, column=0, sticky="ew")
@@ -63,6 +132,11 @@ class FieldGenerateBlock(ctk.CTkFrame):
                             "Orchestrated).")
 
         self.widget.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+
+        if resizable:
+            min_h = min_height if multiline else max(min_height, 32)
+            max_h = max_height if multiline else min(max_height, 160)
+            _add_resize_grip(self, 2, self.widget, min_h, max_h)
 
         self.prompt_frame = ctk.CTkFrame(self, fg_color=theme.BG_ELEVATED,
                                          corner_radius=8)
@@ -103,7 +177,7 @@ class FieldGenerateBlock(ctk.CTkFrame):
         if self.registry:
             self.registry.open(self)
         self._expanded = True
-        self.prompt_frame.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+        self.prompt_frame.grid(row=self._prompt_row, column=0, sticky="ew", pady=(6, 0))
         self.prompt_entry.focus_set()
 
     def collapse(self):
@@ -113,31 +187,20 @@ class FieldGenerateBlock(ctk.CTkFrame):
             self.registry.close(self)
 
     def _read_widget(self):
-        w = self.widget
-        if isinstance(w, ctk.CTkTextbox):
-            return w.get("1.0", "end").strip()
-        return w.get().strip()
+        return self.widget.get("1.0", "end").strip()
 
     def _write_start(self):
         existing = self._read_widget()
         self._append_mode = bool(existing)
-        if isinstance(self.widget, ctk.CTkTextbox):
-            if self._append_mode:
-                self.widget.insert("end", "\n\n")
-            else:
-                self.widget.delete("1.0", "end")
+        if self._append_mode:
+            self.widget.insert("end", "\n\n")
         else:
-            if not self._append_mode:
-                self.widget.delete(0, "end")
+            self.widget.delete("1.0", "end")
 
     def _write_delta(self, text):
-        if isinstance(self.widget, ctk.CTkTextbox):
-            self.widget.insert("end", text)
-            self.widget.see("end")
-        else:
-            cur = self.widget.get()
-            self.widget.delete(0, "end")
-            self.widget.insert(0, cur + text)
+        self.widget.insert("end", text)
+        self.widget.see("end")
+        refresh_textbox_scroll(self.widget)
 
     def _set_busy(self, busy, msg=""):
         self._busy = busy
@@ -213,9 +276,11 @@ class FieldGenerateBlock(ctk.CTkFrame):
         self.after(60, self._poll)
 
 
-def attach_field_generate(parent, app, field_label, multiline=True, height=70,
+def attach_field_generate(parent, app, field_label, multiline=True, height=100,
+                          min_height=64, max_height=400, resizable=True,
                           context_fn=None, registry=None):
     """Create a field block with label, widget, and Generate controls."""
     return FieldGenerateBlock(
         parent, app, field_label, multiline=multiline, height=height,
+        min_height=min_height, max_height=max_height, resizable=resizable,
         context_fn=context_fn, registry=registry)

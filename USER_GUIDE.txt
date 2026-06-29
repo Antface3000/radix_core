@@ -203,6 +203,11 @@ Open from the rail. It consolidates four tabs:
   World: ...), plus timeline, factions, ongoing events, and facts.
 - Outline: per-chapter synopsis and beats.
 
+Save your work: click Save Bible / Save World State / Save on lore entries.
+Unsaved Story Bible edits are auto-saved when you run an agent (if the Story
+Bible panel is open). The Agents panel shows how many setting characters are
+injected and has a Preview button for the full SETTING block.
+
 Each text field on those tabs has a Generate button. Click it, enter a prompt,
 pick T1 (Architect), T2 (Operator), T3 (Flavor), or Orchestrated, then Run.
 Generated text streams into the field (appends if the field already has content).
@@ -223,8 +228,11 @@ The Agents panel is a streaming chat bench for working with agents directly.
   debugging).
 - Orchestrate: let the Manager plan and route your task across the whole team
   instead of a single agent.
-- Inject setting: include the Story Bible + lore + world state in each prompt so
-  agents stay consistent with your world.
+- Inject setting: include the Story Bible + pinned lore + world state in each
+  prompt so agents stay consistent with your world. The line below the controls
+  shows the injected character count; Preview opens the full SETTING text.
+  Only lore entries marked Always include or Pinned are sent to agents here
+  (editor Write uses smart lore scoring for the full Lorebook).
 
 How orchestration works
 -----------------------
@@ -454,3 +462,22 @@ AllTalk (optional TTS)
 AllTalk is a separate install - Radix talks to it at http://127.0.0.1:7851.
 Voice files come from your AllTalk folder or from assets/voices/ via Setup ->
 Sync Assets.
+
+
+14. UPDATES
+===========
+
+Current version is in the VERSION file and shown in the window title (v0.2.0+).
+
+In-app: Help -> About & Updates -> Check for updates. If a newer release exists,
+Update now runs update.bat and closes the app.
+
+Manual: double-click update.bat in the radix_core folder.
+
+  Git install: fetches and pulls origin/main, then reinstalls requirements.txt.
+  Zip install: downloads the latest GitHub release zip (set RADIX_GITHUB_TOKEN
+  for a private repo) and overlays files.
+
+Always preserved: data/, models/, .venv/, assets/piper/
+
+Maintainers: see RELEASE.txt and scripts/release.py.

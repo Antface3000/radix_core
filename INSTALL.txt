@@ -94,6 +94,19 @@ What happens when you double-click Start Radix Core.bat:
 3. The ? button in the top bar opens the in-app User Guide any time.
 
 
+UPDATING RADIX CORE
+-------------------
+
+When a new version is released:
+
+  Git clone install: double-click update.bat (runs git pull + pip install).
+  Zip install: double-click update.bat, or download the latest release zip from
+  GitHub and extract over your folder (keep data/, models/, and .venv/).
+
+Your projects in data/ are never overwritten. See USER_GUIDE.txt section 14 or
+Help -> About & Updates in the app.
+
+
 DEMO MODE VS. THE REAL AI
 -------------------------
 

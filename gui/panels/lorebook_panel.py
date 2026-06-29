@@ -9,8 +9,8 @@ import customtkinter as ctk
 from gui import theme
 from gui.panels.base import BasePanel, bind_scroll_width
 from gui.tooltip import attach
-from gui.widgets.generate_field import GenerateRegistry, attach_field_generate
-from src import lore
+from gui.widgets.generate_field import GenerateRegistry, attach_field_generate, refresh_textbox_scroll
+from src import lore, worldcontext
 
 try:
     from PIL import Image
@@ -38,6 +38,7 @@ class LoreBookPanel(BasePanel):
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=2)
         self.current_id = None
+        self._dirty = False
         self._gen_registry = GenerateRegistry()
         self.header("Lore Book", "Canonical characters and world entries. Flag "
                                  "entries 'always include' to inject them into agents.")
@@ -73,8 +74,13 @@ class LoreBookPanel(BasePanel):
         self.widgets = {}
         row = 0
         for key, label, multiline in _FIELDS:
+            if multiline:
+                box_h, min_h, max_h = 110, 80, 360
+            else:
+                box_h, min_h, max_h = 42, 32, 120
             block = attach_field_generate(
                 right, self.app, label, multiline=multiline,
+                height=box_h, min_height=min_h, max_height=max_h,
                 context_fn=self._lore_context,
                 registry=self._gen_registry,
             )
@@ -83,6 +89,7 @@ class LoreBookPanel(BasePanel):
                 attach(block.widget, "Overrides the auto-built image prompt for this entry. "
                           "Leave blank to use Appearance/Notes.")
             self.widgets[key] = block.widget
+            block.widget._textbox.bind("<KeyRelease>", self._mark_dirty, add="+")
             row += 1
 
         flags = ctk.CTkFrame(right, fg_color="transparent")
@@ -93,14 +100,17 @@ class LoreBookPanel(BasePanel):
         always_cb.pack(side="left", padx=4)
         attach(always_cb, "Always inject this entry into agent prompts, even if "
                           "auto-scan doesn't pick it up.")
+        always_cb.configure(command=self._mark_dirty)
         pinned_cb = ctk.CTkCheckBox(flags, text="Pinned", variable=self.pinned)
         pinned_cb.pack(side="left", padx=4)
         attach(pinned_cb, "Pin to the top of the lore list and give it priority "
                           "when context space is limited.")
+        pinned_cb.configure(command=self._mark_dirty)
 
         btns = ctk.CTkFrame(right, fg_color="transparent")
         btns.grid(row=row + 1, column=0, sticky="ew", padx=12, pady=8)
-        ctk.CTkButton(btns, text="Save", width=90, command=self._save).pack(side="left", padx=2)
+        self.save_btn = ctk.CTkButton(btns, text="Save", width=90, command=self._save)
+        self.save_btn.pack(side="left", padx=2)
         ctk.CTkButton(btns, text="Delete", width=90, fg_color=theme.RED,
                       hover_color="#a82a2a", command=self._delete).pack(side="left", padx=2)
         gen_btn = ctk.CTkButton(btns, text="Generate Image", command=self._generate,
@@ -115,14 +125,29 @@ class LoreBookPanel(BasePanel):
         self.gen_status.grid(row=row + 3, column=0, sticky="ew", padx=12, pady=(0, 8))
 
     def _lore_context(self):
+        paths = self._paths()
+        base = worldcontext.assemble(paths) if paths else ""
         name = self.widgets.get("name")
         typ = self.widgets.get("type")
-        parts = ["Lorebook entry"]
+        parts = [base] if base else []
         if name:
-            parts.append(f"Name: {name.get().strip()}")
+            n = name.get("1.0", "end").strip()
+            if n:
+                parts.append(f"Current entry name: {n}")
         if typ:
-            parts.append(f"Type: {typ.get().strip()}")
-        return "\n".join(parts)
+            t = typ.get("1.0", "end").strip()
+            if t:
+                parts.append(f"Current entry type: {t}")
+        return "\n\n".join(parts)
+
+    def _mark_dirty(self, _event=None):
+        if not self._dirty:
+            self._dirty = True
+            self.save_btn.configure(text="Save *")
+
+    def _clear_dirty(self):
+        self._dirty = False
+        self.save_btn.configure(text="Save")
 
     # ----------------------- data ------------------------------------------
     def on_show(self):
@@ -163,21 +188,18 @@ class LoreBookPanel(BasePanel):
         self.current_id = entry["id"] if entry else None
         for key, w in self.widgets.items():
             val = str((entry or {}).get(key, "") or "")
-            if isinstance(w, ctk.CTkTextbox):
-                w.delete("1.0", "end")
-                w.insert("1.0", val)
-            else:
-                w.delete(0, "end")
-                w.insert(0, val)
+            w.delete("1.0", "end")
+            w.insert("1.0", val)
+            refresh_textbox_scroll(w)
         self.always.set(bool((entry or {}).get("alwaysInclude")))
         self.pinned.set(bool((entry or {}).get("pinned")))
+        self._clear_dirty()
         self._show_image((entry or {}).get("portraitPath"))
 
     def _collect(self):
         out = {}
         for key, w in self.widgets.items():
-            out[key] = (w.get("1.0", "end").strip() if isinstance(w, ctk.CTkTextbox)
-                        else w.get().strip())
+            out[key] = w.get("1.0", "end").strip()
         out["alwaysInclude"] = self.always.get()
         out["pinned"] = self.pinned.get()
         if out.get("type") not in ("character", "world"):
@@ -198,7 +220,18 @@ class LoreBookPanel(BasePanel):
             entry = lore.update(self._paths()["lore"], data)
         self.current_id = entry["id"]
         self._reload_list()
+        self._clear_dirty()
         self.app.status(f"Saved lore entry '{entry['name']}'.")
+        if hasattr(self.app, "refresh_setting_previews"):
+            self.app.refresh_setting_previews()
+
+    def flush_if_dirty(self):
+        if not self._dirty:
+            return
+        data = self._collect()
+        if not data.get("name"):
+            return
+        self._save()
 
     def _delete(self):
         if not self.current_id:

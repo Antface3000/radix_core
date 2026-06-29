@@ -102,6 +102,11 @@ DEFAULT_GLOBAL = {
         "chat_max_tokens": 1200,
     },
     "models": {},  # per-tier overrides over MODEL_REGISTRY
+    "updates": {
+        "check_on_startup": True,
+        "last_check_ts": 0,
+        "dismissed_version": None,
+    },
 }
 
 

@@ -30,7 +30,8 @@ DOCUMENTATION
                    panel / the ? button in the top bar).
   INSTALL.txt    - step-by-step Windows installation tutorial (Python, venv,
                    GPU wheel, models, optional ComfyUI + TTS).
-  CHANGELOG.txt  - release history (currently v0.1.0).
+  CHANGELOG.txt  - release history (see VERSION for current release).
+  RELEASE.txt    - maintainer release workflow (scripts/release.py).
 
 Most non-obvious controls also show a hover tooltip. On first launch a Projects
 window opens so you can continue or pick a project; ? in the top bar opens the
@@ -42,8 +43,11 @@ STRUCTURE
 
 radix_core/
     Start Radix Core.bat  # double-click launcher (venv + services + app)
+    update.bat            # pull latest release (git or zip overlay)
     install.bat
     get_models.bat
+    VERSION               # current semver (read by config.py)
+    version.json          # update manifest for GitHub checks
     run.py                # launcher: python run.py
     config.py             # code defaults: model registry, services, image, UI
     requirements.txt

@@ -97,3 +97,38 @@ def danger_btn():
 def accent_btn(color=BLUE, hover=None):
     return dict(fg_color=color, hover_color=hover or LIME_DIM,
                 text_color="#FFFFFF", corner_radius=8)
+
+
+def _sync_segment_text_colors(segmented, selected_text, unselected_text):
+    current = segmented._current_value
+    for val, btn in segmented._buttons_dict.items():
+        btn.configure(text_color=selected_text if val == current else unselected_text)
+
+
+def style_segmented_button(segmented, selected_text=None, unselected_text=None):
+    """CTk 5.x segmented controls use one text_color — force black on the active segment."""
+    selected_text = selected_text or BG_APP
+    unselected_text = unselected_text or TEXT_PRIMARY
+    segmented._radix_selected_text = selected_text
+    segmented._radix_unselected_text = unselected_text
+
+    if not getattr(segmented, "_radix_text_patched", False):
+        orig_select = segmented._select_button_by_value
+
+        def _select_with_text(value):
+            orig_select(value)
+            _sync_segment_text_colors(
+                segmented, segmented._radix_selected_text, segmented._radix_unselected_text)
+
+        segmented._select_button_by_value = _select_with_text
+        segmented._radix_text_patched = True
+
+    if segmented._current_value:
+        segmented._select_button_by_value(segmented._current_value)
+    elif segmented._buttons_dict:
+        _sync_segment_text_colors(segmented, selected_text, unselected_text)
+
+
+def style_tabview(tabview, selected_text=None, unselected_text=None):
+    """Readable tab labels: light text inactive, black text on lime active tab."""
+    style_segmented_button(tabview._segmented_button, selected_text, unselected_text)

@@ -39,6 +39,7 @@ class SettingsPanel(BasePanel):
         self._build_services(self.tabs.tab("Services"))
         self._build_image(self.tabs.tab("Image"))
         self._build_appearance(self.tabs.tab("Appearance"))
+        theme.style_tabview(self.tabs)
 
     @property
     def s(self):

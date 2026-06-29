@@ -9,6 +9,25 @@ Format loosely based on Keep a Changelog. Versioning follows Semantic Versioning
 [UNRELEASED]
 ============
 
+
+[0.2.0] - 2026-06-28
+====================
+
+Added
+-----
+- VERSION file and version.json manifest; config reads VERSION at startup.
+- src/updater.py - check for updates (git fetch or GitHub Releases API).
+- update.bat and scripts/update.py - one-click update (git pull or release zip
+  overlay; preserves data/, models/, .venv/, assets/piper/).
+- scripts/release.py and RELEASE.txt - maintainer bump/tag/release workflow.
+- Help panel About & Updates view with Check for updates and Update now.
+- Startup update notification (once per day; dismiss or skip version).
+- Story Bible auto-flush before agent runs (unsaved bible/world/lore saved).
+- Agents panel Setting context preview (char count, pinned lore, Preview dialog).
+- Shared bible field assembly in worldcontext (includes Synopsis).
+- Story Bible resizable multiline fields (drag grip) with scroll when content
+  overflows; runtime tab/segmented-button styling for readable selected tabs.
+
 Changed
 -------
 - Documentation moved from .md to plain .txt (INSTALL.txt, USER_GUIDE.txt,
@@ -24,16 +43,10 @@ Changed
 - Editor AI bar scrolls horizontally when the window is narrow.
 - Projects launcher on startup replaces the old Welcome window.
 - Setup, Settings, and Help removed from the left rail (marquee only).
-
-Added
------
-- scripts/start_services.py - pre-launch AllTalk start, ComfyUI probe, Piper report.
-- scripts/setup_piper.py - download Piper binary + en_US-amy-medium voice.
-- Default AllTalk path detection (C:\AllTalkV2\alltalk_tts) in start_services.
-- Model download URLs in INSTALL.txt (sections 7, 9, 10) and USER_GUIDE.txt
-  (section 13).
-- Story Bible field Generate: each text field on Bible, Lorebook, World State,
-  and Outline tabs can run T1/T2/T3 or Orchestrated with a prompt.
+- Orchestration planner, synthesis, and HITL liaison now receive the SETTING
+  block when Inject setting is on.
+- Story Bible Generate passes assembled setting context (not a placeholder label).
+- Story Bible Save button shows * when there are unsaved changes.
 
 Fixed
 -----
@@ -45,6 +58,9 @@ Fixed
 - Story Bible help text and scroll areas no longer clip in a narrow side dock.
 - bind_scroll_width uses CTkScrollableFrame._fit_frame_dimensions_to_canvas (fixes
   startup AttributeError on CTk 5.x).
+- Agents no longer miss Story Bible content when Orchestrate is used (planner
+  and synthesis lacked setting injection).
+- Synopsis field now included in agent/editor setting blocks.
 
 [0.1.0] - 2026-06-27
 ====================

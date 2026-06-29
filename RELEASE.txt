@@ -1,0 +1,52 @@
+RADIX CORE — RELEASE WORKFLOW
+=============================
+
+For maintainers only. Creates a version bump, git tag, and GitHub release.
+
+
+PREREQUISITES
+-------------
+
+1. Git working tree clean (commit your changes first).
+2. gh CLI installed and authenticated: gh auth login
+3. On main branch with origin configured.
+
+
+BUMP AND RELEASE
+----------------
+
+From the radix_core folder:
+
+  .venv\Scripts\python.exe scripts\release.py patch
+
+Also: minor, major, or --set 1.2.3
+
+This will:
+  - Update VERSION and version.json
+  - Move [UNRELEASED] notes in CHANGELOG.txt into the new version section
+  - Stage VERSION, version.json, CHANGELOG.txt
+  - Create annotated tag vX.Y.Z
+  - Build radix_core-X.Y.Z.zip via git archive
+  - Run gh release create with the zip attached
+
+Then commit and push:
+
+  git commit -m "Release v0.2.0"
+  git push origin main
+  git push origin v0.2.0
+
+Skip tag or GitHub release:
+
+  scripts\release.py patch --no-tag
+  scripts\release.py patch --no-release
+
+
+PRIVATE REPO ZIP DOWNLOADS
+--------------------------
+
+Zip users without git need RADIX_GITHUB_TOKEN set when running update.bat
+(or scripts\update.py --zip) so the GitHub API can download release assets.
+
+Otherwise they download the zip manually from:
+
+  https://github.com/Antface3000/radix_core/releases/latest

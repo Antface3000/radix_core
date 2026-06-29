@@ -20,6 +20,7 @@ Settings, AgentEngine, ComfyClient, TTSClient.
 
 import os
 import threading
+import time
 
 import customtkinter as ctk
 
@@ -37,7 +38,7 @@ from gui.panels.focus_panel import FocusPanel
 from gui.panels.music_panel import MusicPanel
 from gui.panels.help_panel import HelpPanel
 from gui.panels.setup_panel import SetupPanel
-from src import projects, service_launch, services, world_state
+from src import projects, service_launch, services, world_state, updater
 from src.settings import Settings
 from src.engine import AgentEngine
 from src.writing_engine import WritingEngine
@@ -58,6 +59,7 @@ class RadixApp(ctk.CTk):
         theme.apply_theme(self.settings)
 
         self.engine = AgentEngine(settings=self.settings)
+        self.engine.flush_callback = self.flush_project_context
         self.writing = WritingEngine(self.engine)
         self.comfy = ComfyClient(self.settings, self.engine)
         self.tts = TTSClient(self.settings)
@@ -108,6 +110,7 @@ class RadixApp(ctk.CTk):
         self.refresh_worldbar()
         self._heartbeat_job = None
         self._setup_prompted = False
+        self._pending_update = None
         self._heartbeat()
         self._startup_services()
 
@@ -116,8 +119,87 @@ class RadixApp(ctk.CTk):
             # doesn't appear behind the startup dialog.
             self.withdraw()
             self.after(100, self._show_startup)
+        else:
+            self.after(400, self._schedule_update_check)
 
-    # ======================= layout ========================================
+    def flush_project_context(self):
+        """Persist unsaved Story Bible / World State / Lore before agent runs."""
+        for panel in self._open_panels():
+            if isinstance(panel, StoryBiblePanel):
+                panel.flush_if_dirty()
+
+    def refresh_setting_previews(self):
+        for panel in self._open_panels():
+            if isinstance(panel, AgentsPanel):
+                panel._refresh_setting_status()
+
+    def _story_bible_panel(self):
+        if isinstance(self._dock_panel, StoryBiblePanel):
+            return self._dock_panel
+        for _w, panel in self._windows.values():
+            if isinstance(panel, StoryBiblePanel):
+                return panel
+        return None
+
+    def _schedule_update_check(self):
+        if not self.settings.get("updates.check_on_startup", True):
+            return
+        last = float(self.settings.get("updates.last_check_ts") or 0)
+        if time.time() - last < 86400:
+            return
+
+        def worker():
+            try:
+                result = updater.check_for_update()
+            except Exception:
+                return
+            self.settings.set("updates.last_check_ts", time.time(), save=True)
+            if result and result.available:
+                dismissed = self.settings.get("updates.dismissed_version")
+                if dismissed != result.remote_version:
+                    self.after(0, lambda r=result: self._offer_update(r))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _offer_update(self, result):
+        self._pending_update = result
+        self.status(f"Update available: v{result.remote_version}")
+        win = ctk.CTkToplevel(self)
+        win.title("Update available")
+        win.geometry("440x220")
+        win.configure(fg_color=theme.BG_APP)
+        win.attributes("-topmost", True)
+        ctk.CTkLabel(
+            win,
+            text=f"Radix Core v{result.remote_version} is available "
+                 f"(you have v{result.local_version}).",
+            wraplength=400, justify="left",
+        ).pack(anchor="w", padx=20, pady=(16, 8))
+        if result.summary:
+            ctk.CTkLabel(win, text=result.summary, text_color=theme.TEXT_MUTED,
+                         wraplength=400, justify="left").pack(anchor="w", padx=20, pady=(0, 8))
+
+        btns = ctk.CTkFrame(win, fg_color="transparent")
+        btns.pack(fill="x", padx=20, pady=12)
+
+        def _now():
+            win.destroy()
+            updater.apply_update()
+            self.destroy()
+
+        def _later():
+            win.destroy()
+
+        def _skip():
+            self.settings.set("updates.dismissed_version", result.remote_version)
+            win.destroy()
+
+        ctk.CTkButton(btns, text="Update now", command=_now,
+                      **theme.primary_btn()).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btns, text="Later", command=_later,
+                      **theme.secondary_btn()).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(btns, text="Skip this version", command=_skip,
+                      **theme.ghost_btn()).pack(side="left")
+
     def _build_marquee(self):
         bar = ctk.CTkFrame(self, fg_color=theme.BG_SIDEBAR, height=54,
                            corner_radius=0)
@@ -568,6 +650,7 @@ class RadixApp(ctk.CTk):
             self.focus_force()
         except Exception:
             pass
+        self.after(400, self._schedule_update_check)
 
     def _startup_open(self, win, project):
         if project["id"] != self.engine.project_id:

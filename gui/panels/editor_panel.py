@@ -254,6 +254,7 @@ class EditorPanel(BasePanel):
         self._build_response_tab(self.dock_tabs.tab("AI"))
         self._build_chat_tab(self.dock_tabs.tab("Chat"))
         self._build_image_tab(self.dock_tabs.tab("Image"))
+        theme.style_tabview(self.dock_tabs)
 
     def _build_response_tab(self, tab):
         tab.grid_columnconfigure(0, weight=1)

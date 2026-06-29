@@ -15,8 +15,8 @@ from gui import theme
 from gui.panels.base import BasePanel, bind_scroll_width, bind_wraplength
 from gui.panels.lorebook_panel import LoreBookPanel
 from gui.panels.worldstate_panel import WorldStatePanel
-from gui.widgets.generate_field import GenerateRegistry, attach_field_generate
-from src import story_bible, outline, chapters
+from gui.widgets.generate_field import GenerateRegistry, attach_field_generate, refresh_textbox_scroll
+from src import story_bible, outline, chapters, worldcontext
 
 _BIBLE_FIELDS = [
     ("premise", "Premise", True),
@@ -40,6 +40,7 @@ class StoryBiblePanel(BasePanel):
         self.grid_columnconfigure(0, weight=1)
         self._bible_registry = GenerateRegistry()
         self._outline_registry = GenerateRegistry()
+        self._bible_dirty = False
 
         self.tabs = ctk.CTkTabview(self, fg_color=theme.BG_CARD)
         self.tabs.grid(row=0, column=0, sticky="nsew", padx=8, pady=8)
@@ -52,6 +53,7 @@ class StoryBiblePanel(BasePanel):
         self.world_panel = WorldStatePanel(self.tabs.tab("World State"), app)
         self._embed(self.tabs.tab("World State"), self.world_panel)
         self._build_outline(self.tabs.tab("Outline"))
+        theme.style_tabview(self.tabs)
 
         self.on_show()
 
@@ -63,6 +65,15 @@ class StoryBiblePanel(BasePanel):
 
     def _paths(self):
         return self.app.engine.paths
+
+    def _bible_context(self, exclude_key=None):
+        paths = self._paths()
+        if not paths:
+            return ""
+        return worldcontext.assemble(
+            paths,
+            exclude_bible_keys=[exclude_key] if exclude_key else None,
+        )
 
     def _outline_context(self):
         ch = self.outline_menu.get()
@@ -82,7 +93,7 @@ class StoryBiblePanel(BasePanel):
         intro = ctk.CTkLabel(
             scroll,
             text="Defines the world (the SETTING injected into every agent). "
-                 "Edit here, not in the personas.",
+                 "Pinned lorebook entries are included too — use Always include on key cards.",
             text_color=theme.TEXT_MUTED, justify="left", anchor="w")
         intro.grid(row=0, column=0, sticky="ew", padx=12, pady=(8, 4))
         bind_wraplength(intro, scroll)
@@ -90,18 +101,33 @@ class StoryBiblePanel(BasePanel):
         self.bible_widgets = {}
         row = 1
         for key, label, multiline in _BIBLE_FIELDS:
+            if multiline:
+                box_h, min_h, max_h = 120, 80, 420
+            else:
+                box_h, min_h, max_h = 42, 32, 140
             block = attach_field_generate(
                 scroll, self.app, label, multiline=multiline,
-                context_fn=lambda: "Story Bible tab",
+                height=box_h, min_height=min_h, max_height=max_h,
+                context_fn=lambda k=key: self._bible_context(k),
                 registry=self._bible_registry,
             )
             block.grid(row=row, column=0, sticky="ew", padx=12, pady=(0, 4))
             self.bible_widgets[key] = block.widget
+            block.widget._textbox.bind("<KeyRelease>", self._mark_bible_dirty, add="+")
             row += 1
 
-        ctk.CTkButton(tab, text="Save Bible", command=self._save_bible,
-                      **theme.primary_btn()).grid(row=1, column=0, sticky="e",
-                                                  padx=12, pady=(4, 8))
+        self.save_bible_btn = ctk.CTkButton(
+            tab, text="Save Bible", command=self._save_bible, **theme.primary_btn())
+        self.save_bible_btn.grid(row=1, column=0, sticky="e", padx=12, pady=(4, 8))
+
+    def _mark_bible_dirty(self, _event=None):
+        if not self._bible_dirty:
+            self._bible_dirty = True
+            self.save_bible_btn.configure(text="Save Bible *")
+
+    def _clear_bible_dirty(self):
+        self._bible_dirty = False
+        self.save_bible_btn.configure(text="Save Bible")
 
     def _load_bible(self):
         data = story_bible.read(self._paths()["bible"])
@@ -110,23 +136,28 @@ class StoryBiblePanel(BasePanel):
             if key == "themes" and isinstance(val, list):
                 val = ", ".join(val)
             val = str(val or "")
-            if isinstance(w, ctk.CTkTextbox):
-                w.delete("1.0", "end")
-                w.insert("1.0", val)
-            else:
-                w.delete(0, "end")
-                w.insert(0, val)
+            w.delete("1.0", "end")
+            w.insert("1.0", val)
+            refresh_textbox_scroll(w)
+        self._clear_bible_dirty()
 
     def _save_bible(self):
         patch = {}
         for key, w in self.bible_widgets.items():
-            val = (w.get("1.0", "end").strip() if isinstance(w, ctk.CTkTextbox)
-                   else w.get().strip())
+            val = w.get("1.0", "end").strip()
             if key == "themes":
                 val = [t.strip() for t in val.split(",") if t.strip()]
             patch[key] = val
-        story_bible.write(self._paths()["bible"], patch)
+        story_bible.update(self._paths()["bible"], patch)
+        self._clear_bible_dirty()
         self.app.status("Story Bible saved.")
+        self.app.refresh_setting_previews()
+
+    def flush_if_dirty(self):
+        if self._bible_dirty:
+            self._save_bible()
+        self.world_panel.flush_if_dirty()
+        self.lore_panel.flush_if_dirty()
 
     # ----------------------- Outline tab -----------------------------------
     def _build_outline(self, tab):
@@ -148,14 +179,16 @@ class StoryBiblePanel(BasePanel):
         body.grid_columnconfigure(0, weight=1)
 
         self.outline_synopsis_block = attach_field_generate(
-            body, self.app, "Synopsis", multiline=True, height=80,
+            body, self.app, "Synopsis", multiline=True, height=100,
+            min_height=72, max_height=320,
             context_fn=self._outline_context,
             registry=self._outline_registry,
         )
         self.outline_synopsis_block.grid(row=0, column=0, sticky="ew", pady=(0, 8))
 
         self.outline_beats_block = attach_field_generate(
-            body, self.app, "Beats (one per line)", multiline=True, height=120,
+            body, self.app, "Beats (one per line)", multiline=True, height=200,
+            min_height=120, max_height=520,
             context_fn=self._outline_context,
             registry=self._outline_registry,
         )
@@ -187,10 +220,12 @@ class StoryBiblePanel(BasePanel):
         data = outline.read_chapter(self._paths()["outlines"], cid)
         self.outline_synopsis.delete("1.0", "end")
         self.outline_synopsis.insert("1.0", data.get("summary", ""))
+        refresh_textbox_scroll(self.outline_synopsis)
         beats = data.get("beats", []) or []
         lines = [(b.get("text") if isinstance(b, dict) else str(b)) for b in beats]
         self.outline_beats.delete("1.0", "end")
         self.outline_beats.insert("1.0", "\n".join(l for l in lines if l))
+        refresh_textbox_scroll(self.outline_beats)
 
     def _save_outline(self):
         if not self._outline_cid:
