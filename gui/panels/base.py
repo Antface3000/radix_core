@@ -55,8 +55,15 @@ def bind_wraplength(label, parent, pad=24):
 
 
 def bind_scroll_width(scroll):
-    """Sync CTkScrollableFrame inner width to its viewport."""
+    """Sync CTkScrollableFrame inner width to its viewport (CTk version-safe)."""
+    fit = getattr(scroll, "_fit_frame_dimensions_to_canvas", None)
+    canvas = getattr(scroll, "_parent_canvas", None)
+    if fit is None or canvas is None:
+        return
+
     def _resize(event):
-        canvas = scroll._parent_canvas
-        canvas.itemconfigure(scroll._parent_frame_id, width=event.width)
-    scroll.bind("<Configure>", _resize, add="+")
+        fit(event)
+
+    canvas.bind("<Configure>", _resize, add="+")
+    if canvas.winfo_width() > 1:
+        fit(None)

@@ -43,6 +43,8 @@ Fixed
 - Tab button contrast (inactive tabs readable) via CTkTabview / CTkSegmentedButton
   theme colors.
 - Story Bible help text and scroll areas no longer clip in a narrow side dock.
+- bind_scroll_width uses CTkScrollableFrame._fit_frame_dimensions_to_canvas (fixes
+  startup AttributeError on CTk 5.x).
 
 [0.1.0] - 2026-06-27
 ====================
