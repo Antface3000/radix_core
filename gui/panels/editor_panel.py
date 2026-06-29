@@ -18,6 +18,7 @@ from tkinter import colorchooser
 
 import customtkinter as ctk
 
+import config
 from gui import theme
 from gui.panels.base import BasePanel
 from gui.tooltip import attach

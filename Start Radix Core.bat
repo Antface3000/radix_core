@@ -33,6 +33,11 @@ set "RADIX_SERVICES_PRELAUNCHED=1"
 
 REM 3) Open the app.
 ".venv\Scripts\python.exe" run.py %*
+if errorlevel 1 (
+    echo.
+    echo Radix Core exited with an error. See the message above.
+    pause
+)
 exit /b %errorlevel%
 
 :try_py

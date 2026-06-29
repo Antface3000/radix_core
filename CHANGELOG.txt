@@ -30,7 +30,14 @@ Added
 - scripts/start_services.py - pre-launch AllTalk start, ComfyUI probe, Piper report.
 - scripts/setup_piper.py - download Piper binary + en_US-amy-medium voice.
 - Default AllTalk path detection (C:\AllTalkV2\alltalk_tts) in start_services.
+- Model download URLs in INSTALL.txt (sections 7, 9, 10) and USER_GUIDE.txt
+  (section 13).
 
+Fixed
+-----
+- Startup crash: missing import config in editor_panel.py (style preset menu).
+- Start Radix Core.bat now pauses on error so the console stays open if launch
+  fails.
 
 [0.1.0] - 2026-06-27
 ====================
