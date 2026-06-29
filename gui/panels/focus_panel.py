@@ -8,6 +8,7 @@
 import customtkinter as ctk
 
 from gui import theme
+from gui import panel_text
 from gui.panels.base import BasePanel
 from gui.tooltip import attach
 from src import projects, lore, story_bible, world_state, chapters
@@ -40,7 +41,7 @@ class FocusPanel(BasePanel):
         ctk.CTkLabel(tab, text="Stray ideas, TODOs, and lines you might use later.",
                      text_color=theme.TEXT_MUTED).grid(row=0, column=0, sticky="w",
                                                       padx=10, pady=(8, 2))
-        self.parking_box = ctk.CTkTextbox(tab, wrap="word")
+        self.parking_box = panel_text.new_textbox(tab, self.app.settings, wrap="word")
         self.parking_box.grid(row=1, column=0, sticky="nsew", padx=10, pady=4)
         ctk.CTkButton(tab, text="Save", command=self._save_parking,
                       **theme.primary_btn()).grid(row=2, column=0, sticky="e",
@@ -66,7 +67,7 @@ class FocusPanel(BasePanel):
                      wraplength=480, justify="left").grid(row=0, column=0,
                                                          sticky="w", padx=10,
                                                          pady=(8, 2))
-        self.quick_box = ctk.CTkTextbox(tab, wrap="word")
+        self.quick_box = panel_text.new_textbox(tab, self.app.settings, wrap="word")
         self.quick_box.grid(row=1, column=0, sticky="nsew", padx=10, pady=4)
         self.quick_box.insert("1.0", "Jax Vire: ex-courier, owes everyone\n"
                                      "world: The Undercity: flooded lower tier")

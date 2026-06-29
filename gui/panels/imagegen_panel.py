@@ -8,6 +8,7 @@ import time
 import customtkinter as ctk
 
 from gui import theme
+from gui import panel_text
 from gui.panels.base import BasePanel
 from gui.tooltip import attach
 
@@ -39,7 +40,8 @@ class ImageGenPanel(BasePanel):
         box.grid(row=1, column=0, sticky="ew", padx=16, pady=6)
         box.grid_columnconfigure(0, weight=1)
 
-        self.prompt = ctk.CTkTextbox(box, height=80, wrap="word")
+        self.prompt = panel_text.new_textbox(
+            box, self.app.settings, height=80, wrap="word")
         self.prompt.grid(row=0, column=0, columnspan=4, sticky="ew", padx=10, pady=10)
         self.prompt.insert("1.0", "A lone figure on a rain-slick street at night")
 

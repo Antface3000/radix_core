@@ -3,6 +3,7 @@
 import base64
 import os
 import threading
+from tkinter import messagebox
 
 import customtkinter as ctk
 
@@ -160,8 +161,11 @@ class LoreBookPanel(BasePanel):
         self.save_btn = ctk.CTkButton(btn_inner, text="Save", width=88, command=self._save,
                                       **theme.primary_btn())
         self.save_btn.pack(side="left", padx=2, pady=2)
-        ctk.CTkButton(btn_inner, text="Delete", width=88, command=self._delete,
-                      **theme.danger_btn()).pack(side="left", padx=2, pady=2)
+        self.delete_btn = ctk.CTkButton(btn_inner, text="Delete", width=88,
+                                        command=self._delete, state="disabled",
+                                        **theme.danger_btn())
+        self.delete_btn.pack(side="left", padx=2, pady=2)
+        attach(self.delete_btn, "Delete the selected lore entry.")
         gen_img_btn = ctk.CTkButton(btn_inner, text="Generate Image", command=self._generate,
                                     **theme.accent_btn(theme.PURPLE, "#5e1f96"))
         gen_img_btn.pack(side="left", padx=2, pady=2)
@@ -222,13 +226,22 @@ class LoreBookPanel(BasePanel):
             for e in entries:
                 mark = " *" if e.get("alwaysInclude") else ""
                 full = e["name"] + mark
+                row_f = ctk.CTkFrame(self.listbox, fg_color="transparent")
+                row_f.grid(row=row, column=0, sticky="ew", padx=2, pady=1)
+                row_f.grid_columnconfigure(0, weight=1)
                 btn = ctk.CTkButton(
-                    self.listbox, text=full, anchor="w",
+                    row_f, text=full, anchor="w",
                     **theme.ghost_btn())
                 btn.configure(height=28)
-                btn.grid(row=row, column=0, sticky="ew", padx=4, pady=1)
+                btn.grid(row=0, column=0, sticky="ew", padx=(2, 0))
                 attach(btn, full)
                 btn.configure(command=lambda x=e["id"]: self._select(x))
+                del_btn = ctk.CTkButton(
+                    row_f, text="\u00d7", width=28, height=28,
+                    command=lambda x=e["id"], n=e["name"]: self._delete_entry(x, n),
+                    **theme.danger_btn())
+                del_btn.grid(row=0, column=1, padx=(2, 2))
+                attach(del_btn, f"Delete '{e['name']}'")
                 row += 1
 
     def _select(self, entry_id):
@@ -239,6 +252,7 @@ class LoreBookPanel(BasePanel):
 
     def _load_entry(self, entry):
         self.current_id = entry["id"] if entry else None
+        self.delete_btn.configure(state="normal" if self.current_id else "disabled")
         for key, w in self.widgets.items():
             val = str((entry or {}).get(key, "") or "")
             w.delete("1.0", "end")
@@ -288,12 +302,29 @@ class LoreBookPanel(BasePanel):
 
     def _delete(self):
         if not self.current_id:
+            self.app.toast("Select a lore entry to delete.", kind="warning")
             return
-        lore.remove(self._paths()["lore"], self.current_id)
-        self.current_id = None
+        name = self.widgets["name"].get("1.0", "end").strip() or "this entry"
+        self._delete_entry(self.current_id, name)
+
+    def _delete_entry(self, entry_id, name):
+        if not entry_id:
+            return
+        label = name or "this entry"
+        if not messagebox.askyesno(
+            "Delete lore entry",
+            f"Delete '{label}'?\n\nThis cannot be undone.",
+            parent=self.winfo_toplevel(),
+        ):
+            return
+        lore.remove(self._paths()["lore"], entry_id)
+        if self.current_id == entry_id:
+            self.current_id = None
+            self._load_entry(None)
         self._reload_list()
-        self._load_entry(None)
-        self.app.status("Lore entry deleted.")
+        self.app.toast(f"Deleted lore entry '{label}'.", kind="success")
+        if hasattr(self.app, "refresh_setting_previews"):
+            self.app.refresh_setting_previews()
 
     # ----------------------- image generation ------------------------------
     def _generate(self):

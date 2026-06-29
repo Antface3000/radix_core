@@ -11,6 +11,7 @@ import customtkinter as ctk
 
 import config
 from gui import theme
+from gui import panel_text
 from gui.panels.base import BasePanel
 from gui.tooltip import attach
 from src import services
@@ -146,7 +147,7 @@ class SettingsPanel(BasePanel):
         win.title(f"System prompt - {key} ({scope})")
         win.geometry("680x520")
         win.transient(self.winfo_toplevel())
-        box = ctk.CTkTextbox(win, wrap="word")
+        box = panel_text.new_textbox(win, self.s, wrap="word")
         box.pack(fill="both", expand=True, padx=12, pady=12)
         box.insert("1.0", resolved.get("system_prompt", ""))
 
@@ -261,11 +262,11 @@ class SettingsPanel(BasePanel):
         attach(self.ed_voice, "Which style guide Write uses: My Style, Alt Style, "
                               "or Neutral Style (no style guide).")
         lbl("My Style guide")
-        self.ed_style_my = ctk.CTkTextbox(scroll, height=70, wrap="word")
+        self.ed_style_my = panel_text.new_textbox(scroll, self.s, height=70, wrap="word")
         self.ed_style_my.pack(fill="x", padx=12, pady=2)
         self.ed_style_my.insert("1.0", self.s.get("editor.style_guide_my", ""))
         lbl("Alt Style guide")
-        self.ed_style_alt = ctk.CTkTextbox(scroll, height=70, wrap="word")
+        self.ed_style_alt = panel_text.new_textbox(scroll, self.s, height=70, wrap="word")
         self.ed_style_alt.pack(fill="x", padx=12, pady=2)
         self.ed_style_alt.insert("1.0", self.s.get("editor.style_guide_alt", ""))
 
@@ -559,12 +560,44 @@ class SettingsPanel(BasePanel):
         self.theme_opt.pack(anchor="w", padx=12)
         ctk.CTkLabel(f, text="(Theme change applies on next launch.)",
                      text_color=theme.TEXT_MUTED).pack(anchor="w", padx=12, pady=4)
+
+        ctk.CTkLabel(f, text="Panel text size", anchor="w").pack(
+            fill="x", padx=12, pady=(12, 2))
+        self.panel_font_size = ctk.CTkOptionMenu(
+            f, values=[str(n) for n in range(10, 21)],
+            command=lambda _v: None)
+        self.panel_font_size.set(str(self.s.get("ui.panel_font_size", 13)))
+        self.panel_font_size.pack(anchor="w", padx=12)
+        attach(self.panel_font_size,
+               "Font size for Agents, Story Bible fields, AI dock, Help, and "
+               "other panel text boxes (not the main manuscript editor).")
+
+        self.panel_auto_scroll = ctk.BooleanVar(
+            value=self.s.get("ui.panel_auto_scroll", True))
+        auto_cb = ctk.CTkCheckBox(
+            f, text="Auto-scroll panel text boxes",
+            variable=self.panel_auto_scroll)
+        auto_cb.pack(anchor="w", padx=12, pady=(10, 4))
+        attach(auto_cb,
+               "Keep Agents chat and the editor AI/Chat dock scrolled to the "
+               "latest text while content streams in.")
+
         ctk.CTkButton(tab, text="Save Appearance", command=self._save_appearance).pack(anchor="e", pady=8)
 
     def _save_appearance(self):
         self.s.set("appearance_mode", self.mode.get(), save=False)
-        self.s.set("color_theme", self.theme_opt.get())
+        self.s.set("color_theme", self.theme_opt.get(), save=False)
+        try:
+            self.s.set("ui.panel_font_size", int(self.panel_font_size.get()), save=False)
+        except ValueError:
+            pass
+        self.s.set("ui.panel_auto_scroll", bool(self.panel_auto_scroll.get()))
         ctk.set_appearance_mode(self.mode.get())
+        self.app.refresh_panel_fonts()
+        from gui.panels.agents_panel import AgentsPanel
+        for panel in self.app._open_panels():
+            if isinstance(panel, AgentsPanel):
+                panel.auto_scroll.set(self.s.get("ui.panel_auto_scroll", True))
         self.app.saved("Appearance saved (theme applies next launch).")
 
     # ----------------------- helper ----------------------------------------

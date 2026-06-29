@@ -13,6 +13,7 @@ import customtkinter as ctk
 
 import config
 from gui import theme
+from gui import panel_text
 from gui.panels.base import BasePanel
 from gui.tooltip import attach
 from src import asset_sync, service_launch, services
@@ -236,9 +237,9 @@ class SetupPanel(BasePanel):
         attach(ow, "If on, files that already exist are replaced; if off, they "
                    "are left untouched.")
 
-        self.sync_log = ctk.CTkTextbox(parent, height=200, wrap="word",
-                                       font=("Consolas", 11),
-                                       fg_color=theme.BG_INPUT)
+        self.sync_log = panel_text.new_textbox(
+            parent, self.app.settings, height=200, wrap="word",
+            fg_color=theme.BG_INPUT)
         self.sync_log.grid(row=6, column=0, sticky="ew", padx=12, pady=(4, 12))
         self.sync_log.insert("1.0", "Click Preview to see the sync plan.")
         self.sync_log.configure(state="disabled")

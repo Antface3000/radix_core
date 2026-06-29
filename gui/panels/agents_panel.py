@@ -6,6 +6,7 @@ import threading
 import customtkinter as ctk
 
 from gui import theme
+from gui import panel_text
 from gui.panels.base import BasePanel
 from gui.tooltip import attach
 from src import personas, worldcontext
@@ -62,6 +63,13 @@ class AgentsPanel(BasePanel):
         inject_cb.grid(row=0, column=4, padx=8, pady=10)
         attach(inject_cb, "Add the story bible, lore, and world state to each "
                           "prompt so agents stay consistent with your world.")
+        self.auto_scroll = ctk.BooleanVar(
+            value=self.app.settings.get("ui.panel_auto_scroll", True))
+        auto_cb = ctk.CTkCheckBox(bar, text="Auto-scroll", variable=self.auto_scroll,
+                                  command=self._toggle_auto_scroll)
+        auto_cb.grid(row=0, column=5, padx=8, pady=10)
+        attach(auto_cb, "Keep the chat scrolled to the latest message while "
+                         "agents respond.")
 
         self.info = ctk.CTkLabel(self, text="", anchor="w", justify="left",
                                  text_color=theme.TEXT_MUTED,
@@ -84,7 +92,7 @@ class AgentsPanel(BasePanel):
         self._refresh_setting_status()
 
     def _build_chat(self):
-        self.chat = ctk.CTkTextbox(self, wrap="word", font=("Consolas", 13))
+        self.chat = panel_text.new_textbox(self, self.app.settings, wrap="word")
         self.chat.grid(row=4, column=0, sticky="nsew", padx=16, pady=6)
         self.chat.configure(state="disabled")
 
@@ -129,6 +137,15 @@ class AgentsPanel(BasePanel):
 
     def on_show(self):
         self._refresh_setting_status()
+        self.auto_scroll.set(self.app.settings.get("ui.panel_auto_scroll", True))
+        try:
+            self._scroll_chat()
+        except Exception:
+            pass
+
+    def _scroll_chat(self):
+        if self.auto_scroll.get():
+            self.chat.see("end")
 
     def _refresh_setting_status(self):
         if not self.inject.get():
@@ -161,7 +178,7 @@ class AgentsPanel(BasePanel):
         win.title("Injected setting preview")
         win.geometry("640x480")
         win.configure(fg_color=theme.BG_APP)
-        box = ctk.CTkTextbox(win, wrap="word", font=("Consolas", 12))
+        box = panel_text.new_textbox(win, self.app.settings, wrap="word")
         box.pack(fill="both", expand=True, padx=12, pady=12)
         box.insert("1.0", text)
         box.configure(state="disabled")
@@ -177,6 +194,9 @@ class AgentsPanel(BasePanel):
         self.info.configure(
             text=f"{p['tier']}  -  model '{p['model_key']}'  -  temp "
                  f"{p.get('temperature', '-')}  -  captures: {p.get('capture_kind') or 'none'}")
+
+    def _toggle_auto_scroll(self):
+        self.app.settings.set("ui.panel_auto_scroll", self.auto_scroll.get())
 
     def _toggle_inject(self):
         self.app.engine.context_inject = self.inject.get()
@@ -298,13 +318,13 @@ class AgentsPanel(BasePanel):
         if self.chat.index("end-1c") != "1.0":
             self.chat.insert("end", "\n\n")
         self.chat.insert("end", f"[{who}]\n")
-        self.chat.see("end")
+        self._scroll_chat()
         self.chat.configure(state="disabled")
 
     def _text(self, text):
         self.chat.configure(state="normal")
         self.chat.insert("end", text)
-        self.chat.see("end")
+        self._scroll_chat()
         self.chat.configure(state="disabled")
 
     def _clear(self):

@@ -20,6 +20,7 @@ import customtkinter as ctk
 
 import config
 from gui import theme
+from gui import panel_text
 from gui.panels.base import BasePanel
 from gui.tooltip import attach
 from src import chapters, projects, story_context
@@ -284,7 +285,7 @@ class EditorPanel(BasePanel):
         close_btn.grid(row=0, column=4, padx=(2, 0))
         attach(close_btn, "Hide the AI dock.")
 
-        self.ai_text = ctk.CTkTextbox(tab, wrap="word", font=("Georgia", 13))
+        self.ai_text = panel_text.new_textbox(tab, self.app.settings, wrap="word")
         self.ai_text.grid(row=1, column=0, sticky="nsew", pady=6)
         self.ai_text.configure(state="disabled")
 
@@ -307,7 +308,7 @@ class EditorPanel(BasePanel):
     def _build_chat_tab(self, tab):
         tab.grid_columnconfigure(0, weight=1)
         tab.grid_rowconfigure(0, weight=1)
-        self.chat_text = ctk.CTkTextbox(tab, wrap="word", font=("Segoe UI", 12))
+        self.chat_text = panel_text.new_textbox(tab, self.app.settings, wrap="word")
         self.chat_text.grid(row=0, column=0, sticky="nsew", pady=(2, 6))
         self.chat_text.configure(state="disabled")
         bottom = ctk.CTkFrame(tab, fg_color="transparent")
@@ -843,7 +844,7 @@ class EditorPanel(BasePanel):
         self._ai_buffer += text
         self.ai_text.configure(state="normal")
         self.ai_text.insert("end", text)
-        self.ai_text.see("end")
+        panel_text.scroll_end(self.ai_text, self.app.settings)
         self.ai_text.configure(state="disabled")
 
     def _ai_set_text(self, text):
@@ -950,7 +951,7 @@ class EditorPanel(BasePanel):
         if self.chat_text.index("end-1c") != "1.0":
             self.chat_text.insert("end", "\n\n")
         self.chat_text.insert("end", f"[{who}]\n{text}")
-        self.chat_text.see("end")
+        panel_text.scroll_end(self.chat_text, self.app.settings)
         self.chat_text.configure(state="disabled")
 
     def _chat_stream_start(self):
@@ -960,13 +961,13 @@ class EditorPanel(BasePanel):
         who = persona["display_name"] if persona else "Assistant"
         self.chat_text.configure(state="normal")
         self.chat_text.insert("end", f"\n\n[{who}]\n")
-        self.chat_text.see("end")
+        panel_text.scroll_end(self.chat_text, self.app.settings)
         self.chat_text.configure(state="disabled")
 
     def _chat_stream_append(self, text):
         self.chat_text.configure(state="normal")
         self.chat_text.insert("end", text)
-        self.chat_text.see("end")
+        panel_text.scroll_end(self.chat_text, self.app.settings)
         self.chat_text.configure(state="disabled")
 
     def _chat_send(self):
@@ -1016,7 +1017,7 @@ class EditorPanel(BasePanel):
         ctk.CTkLabel(win, text="Scene guidance injected into every Write:",
                      text_color=theme.TEXT_MUTED).pack(anchor="w", padx=12,
                                                        pady=(12, 4))
-        box = ctk.CTkTextbox(win, wrap="word")
+        box = panel_text.new_textbox(win, self.app.settings, wrap="word")
         box.pack(fill="both", expand=True, padx=12, pady=4)
         box.insert("1.0", self._author_note_text())
 

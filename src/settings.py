@@ -37,6 +37,8 @@ DEFAULT_GLOBAL = {
         "show_startup": True,
         "setup_done": False,
         "dock_width": 460,
+        "panel_font_size": config.PANEL_FONT_SIZE,
+        "panel_auto_scroll": config.PANEL_AUTO_SCROLL,
     },
     "generation": {
         "temperature": config.DEFAULT_TEMPERATURE,

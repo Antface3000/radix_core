@@ -147,6 +147,11 @@ EDITOR_FONT_SIZE = 18
 EDITOR_LINE_HEIGHT = 1.6
 EDITOR_WORD_GOAL = 1000
 
+# --- Panel text boxes (Agents, Story Bible fields, AI dock, etc.) -----------
+PANEL_FONT_FAMILY = "Segoe UI"
+PANEL_FONT_SIZE = 13
+PANEL_AUTO_SCROLL = True
+
 # --- UI ---------------------------------------------------------------------
 APP_TITLE = "Radix Core"
 APP_VERSION = _read_version()

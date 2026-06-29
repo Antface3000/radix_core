@@ -8,6 +8,7 @@ import customtkinter as ctk
 
 import config
 from gui import theme
+from gui import panel_text
 from gui.panels.base import BasePanel
 from gui.tooltip import attach
 from src import updater
@@ -40,8 +41,8 @@ class HelpPanel(BasePanel):
         self.doc_switch.pack(side="left")
         attach(self.doc_switch, "Switch between docs, install guide, and updates.")
 
-        self.body = ctk.CTkTextbox(self, wrap="word", font=("Segoe UI", 13),
-                                   fg_color=theme.BG_INPUT)
+        self.body = panel_text.new_textbox(
+            self, self.app.settings, wrap="word", fg_color=theme.BG_INPUT)
         self.body.grid(row=2, column=0, sticky="nsew", padx=20, pady=(4, 8))
 
         self.about_frame = ctk.CTkFrame(self, fg_color="transparent")

@@ -5,6 +5,7 @@ import threading
 
 import customtkinter as ctk
 
+from gui import panel_text
 from gui import theme
 from gui.panels.base import bind_wraplength
 from gui.tooltip import attach
@@ -117,8 +118,9 @@ class FieldGenerateBlock(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
 
         box_h = height if multiline else max(height, 42)
-        self.widget = ctk.CTkTextbox(self, height=box_h, wrap="word",
-                                     activate_scrollbars=True)
+        self.widget = panel_text.new_textbox(
+            self, app.settings, height=box_h, wrap="word",
+            activate_scrollbars=True)
         _bind_textbox_scroll(self.widget)
 
         self.head = ctk.CTkFrame(self, fg_color="transparent")

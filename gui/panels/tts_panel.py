@@ -5,6 +5,7 @@ import threading
 import customtkinter as ctk
 
 from gui import theme
+from gui import panel_text
 from gui.panels.base import BasePanel
 
 
@@ -20,7 +21,7 @@ class TTSPanel(BasePanel):
         box.grid(row=1, column=0, sticky="nsew", padx=16, pady=(4, 8))
         box.grid_rowconfigure(0, weight=1)
         box.grid_columnconfigure(0, weight=1)
-        self.text = ctk.CTkTextbox(box, wrap="word")
+        self.text = panel_text.new_textbox(box, self.app.settings, wrap="word")
         self.text.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
         self.text.insert("1.0", "The city never sleeps; neither do its debts.")
 

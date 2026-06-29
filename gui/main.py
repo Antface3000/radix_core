@@ -86,6 +86,7 @@ class RadixApp(ctk.CTk):
         self._feature_classes = {name: cls for name, _icon, cls in self.features}
         self._dock_name = None        # feature currently shown in the dock
         self._dock_panel = None       # its live panel instance
+        self._dock_cache = {}         # name -> hidden panel (preserved on tab switch)
         self._windows = {}            # name -> (toplevel, panel) for pop-outs
         self._marquee_collapsed = False   # secondary marquee items in overflow?
         self._marquee_full_w = None       # px width needed to show everything
@@ -135,9 +136,19 @@ class RadixApp(ctk.CTk):
             if isinstance(panel, AgentsPanel):
                 panel._refresh_setting_status()
 
+    def refresh_panel_fonts(self):
+        """Apply panel text size to all secondary CTkTextboxes."""
+        from gui import panel_text
+        panel_text.apply_font_tree(self.editor, self.settings)
+        for panel in self._open_panels():
+            panel_text.apply_font_tree(panel, self.settings)
+
     def _story_bible_panel(self):
         if isinstance(self._dock_panel, StoryBiblePanel):
             return self._dock_panel
+        for panel in self._dock_cache.values():
+            if isinstance(panel, StoryBiblePanel):
+                return panel
         for _w, panel in self._windows.values():
             if isinstance(panel, StoryBiblePanel):
                 return panel
@@ -495,6 +506,15 @@ class RadixApp(ctk.CTk):
         else:
             self.open_feature(name)
 
+    def _stash_dock_panel(self):
+        """Hide the active dock panel without destroying it (keeps chat/state)."""
+        if self._dock_panel is None or not self._dock_name:
+            return
+        self._dock_panel.grid_remove()
+        self._dock_cache[self._dock_name] = self._dock_panel
+        self._dock_panel = None
+        self._dock_name = None
+
     def open_feature(self, name):
         if name in self._windows:
             self._windows[name][0].focus()
@@ -503,14 +523,24 @@ class RadixApp(ctk.CTk):
         if cls is None:
             self.status(f"'{name}' is not available yet.")
             return
-        if self._dock_panel is not None:
-            self._dock_panel.destroy()
-            self._dock_panel = None
+        self._stash_dock_panel()
         self.dock.configure(width=self._dock_width)
         self.dock.grid()
         self.splitter.grid()
         self.dock_title.configure(text=name)
-        panel = cls(self.dock_body, self)
+        panel = self._dock_cache.get(name)
+        if panel is None:
+            try:
+                panel = cls(self.dock_body, self)
+            except Exception:
+                panel = None
+        else:
+            try:
+                if not panel.winfo_exists():
+                    panel = cls(self.dock_body, self)
+            except Exception:
+                panel = cls(self.dock_body, self)
+        self._dock_cache[name] = panel
         panel.grid(row=0, column=0, sticky="nsew")
         self._dock_panel = panel
         self._dock_name = name
@@ -518,10 +548,7 @@ class RadixApp(ctk.CTk):
         panel.on_show()
 
     def close_dock(self):
-        if self._dock_panel is not None:
-            self._dock_panel.destroy()
-            self._dock_panel = None
-        self._dock_name = None
+        self._stash_dock_panel()
         self.dock.grid_remove()
         self.splitter.grid_remove()
         self._sync_rail()
@@ -674,6 +701,14 @@ class RadixApp(ctk.CTk):
             return
         name = self._dock_name
         self.close_dock()
+        # Pop-out builds a fresh panel in a new window; drop the cached dock copy
+        # so we don't keep two live instances (e.g. duplicate agent poll loops).
+        cached = self._dock_cache.pop(name, None)
+        if cached is not None:
+            try:
+                cached.destroy()
+            except Exception:
+                pass
         self._open_window(name)
 
     def _open_window(self, name):
@@ -709,11 +744,24 @@ class RadixApp(ctk.CTk):
                               text_color=theme.TEXT_PRIMARY)
 
     def _open_panels(self):
-        """All live feature panels (docked + popped-out)."""
+        """All live feature panels (docked, cached, and popped-out)."""
         panels = []
+        seen = set()
         if self._dock_panel is not None:
             panels.append(self._dock_panel)
-        panels.extend(p for _w, p in self._windows.values())
+            seen.add(id(self._dock_panel))
+        for panel in self._dock_cache.values():
+            if id(panel) in seen:
+                continue
+            try:
+                if panel.winfo_exists():
+                    panels.append(panel)
+                    seen.add(id(panel))
+            except Exception:
+                pass
+        for _w, p in self._windows.values():
+            if id(p) not in seen:
+                panels.append(p)
         return panels
 
     # ======================= project management ============================

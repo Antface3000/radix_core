@@ -10,6 +10,21 @@ Format loosely based on Keep a Changelog. Versioning follows Semantic Versioning
 ============
 
 
+[0.2.3] - 2026-06-28
+====================
+
+Added
+-----
+- Lorebook entry delete: per-row x button on the list, Delete on the form (with
+  confirmation), and a toast on success.
+- Dock panel caching: switching sidebar features no longer destroys panel state;
+  Agents chat and in-progress runs survive tab switches.
+- Panel text size (Settings -> Appearance): adjusts font size for all secondary
+  text boxes (Agents, Story Bible fields, AI dock, Help, etc.) without affecting
+  the main manuscript editor.
+- Auto-scroll checkbox on the Agents panel; global default in Settings ->
+  Appearance. Applies to Agents chat and editor AI/Chat docks while streaming.
+
 [0.2.2] - 2026-06-28
 ====================
 
