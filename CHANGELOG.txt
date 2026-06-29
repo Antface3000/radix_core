@@ -10,6 +10,25 @@ Format loosely based on Keep a Changelog. Versioning follows Semantic Versioning
 ============
 
 
+[0.2.4] - 2026-06-28
+====================
+
+Added
+-----
+- Agent canon capture: [[REMEMBER]], [[CHARACTER]], [[WORLD]], [[BIBLE:*]], and
+  [[WORLDSTATE:*]] markers persist to Lorebook, Story Bible, and World State.
+- Lenient marker parsing (markdown wrappers, unclosed [[REMEMBER]] fallback).
+- Lore upsert by name; orchestration captures each step and Manager synthesis.
+- Auto-refresh Story Bible tabs and toast summary after capture.
+- Canon capture mode (Settings -> Orchestration): Fill empty only, Append with
+  note (--- Added from agent --- separator), or Merge into one entry.
+
+Changed
+-------
+- Agent personas and Manager synthesis prompt document bible/world markers and
+  plain-tag formatting rules.
+- USER_GUIDE section 11 expanded for all marker types and capture modes.
+
 [0.2.3] - 2026-06-28
 ====================
 

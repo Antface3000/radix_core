@@ -166,6 +166,96 @@ def remove(lore_path, entry_id):
     return True
 
 
+def _norm_name(name):
+    return (name or "").strip().lower()
+
+
+def _merge_notes(old, new):
+    old = (old or "").strip()
+    new = (new or "").strip()
+    if not new:
+        return old
+    if not old:
+        return new
+    if new == old or new in old:
+        return old
+    if old in new:
+        return new
+    seen = set()
+    merged = []
+    for para in old.split("\n\n") + new.split("\n\n"):
+        chunk = para.strip()
+        if not chunk:
+            continue
+        key = chunk.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(chunk)
+    return "\n\n".join(merged)
+
+
+def _append_notes(old, new, source="agent"):
+    old = (old or "").strip()
+    new = (new or "").strip()
+    if not new:
+        return old
+    if not old:
+        return new
+    src = (source or "agent").strip() or "agent"
+    return old + "\n\n" + f"--- Added from {src} ---" + "\n\n" + new
+
+
+def upsert(lore_path, entry, mode="merge", source="agent"):
+    """Insert or merge a lore entry matched by normalized name + type."""
+    storage_type = entry.get("type") or (
+        "character" if entry.get("entryType") == "character" else "world")
+    bucket = "world" if storage_type == "world" else "characters"
+    name = (entry.get("name") or "").strip()
+    if not name:
+        return add(lore_path, entry)
+    data = read(lore_path)
+    key = _norm_name(name)
+    capture_mode = mode if mode in ("empty", "append", "merge") else "merge"
+    for i, existing in enumerate(data[bucket]):
+        if _norm_name(existing.get("name")) != key:
+            continue
+        old_notes = (existing.get("notes") or "").strip()
+        new_notes = (entry.get("notes") or "").strip()
+        if capture_mode == "empty" and old_notes:
+            return existing
+        merged = dict(existing)
+        for field in ("notes", "appearance", "goals"):
+            new_val = (entry.get(field) or "").strip()
+            old_val = (existing.get(field) or "").strip()
+            if not new_val:
+                continue
+            if field == "notes":
+                if not old_val:
+                    merged[field] = new_val
+                elif capture_mode == "append":
+                    merged[field] = _append_notes(old_val, new_val, source)
+                else:
+                    merged[field] = _merge_notes(old_val, new_val)
+            elif new_val != old_val:
+                if not old_val:
+                    merged[field] = new_val
+                elif capture_mode == "append":
+                    merged[field] = _append_notes(old_val, new_val, source)
+                else:
+                    merged[field] = _merge_notes(old_val, new_val)
+        for field in ("keywords", "aliases"):
+            if entry.get(field):
+                combined = list(dict.fromkeys(
+                    _to_array(existing.get(field)) + _to_array(entry.get(field))))
+                merged[field] = combined
+        updated = normalize_entry({**merged, "updatedAt": _now()}, storage_type)
+        data[bucket][i] = updated
+        write(lore_path, data)
+        return updated
+    return add(lore_path, entry)
+
+
 def all_entries(lore_path):
     data = read(lore_path)
     return data["characters"] + data["world"]

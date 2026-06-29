@@ -360,16 +360,42 @@ persist to data/global.json / data/agents.json and apply live.
 11. LORE CAPTURE MARKERS
 ========================
 
-Agents persist canon by wrapping it in markers, which the engine files into the
-project's lore.json automatically:
+Agents persist canon by wrapping it in markers. With Auto-capture on (Settings ->
+Orchestration), tagged blocks update Lorebook, Story Bible, and World State.
 
-- [[REMEMBER]] ... [[/REMEMBER]] - a general fact to remember.
-- [[CHARACTER]], [[NPC]] - a character entry.
-- [[WORLD]], [[QUEST]] - a world/place or quest entry.
-- [[CREATURE]] - a creature entry.
+Lorebook markers
+----------------
+- [[REMEMBER]] ... [[/REMEMBER]] - general fact (type depends on agent).
+- [[CHARACTER:Name]] ... [[/CHARACTER]] - character profile (named preferred).
+- [[NPC]] ... [[/NPC]] - character entry.
+- [[WORLD]] ... [[/WORLD]] - place, faction, or quest.
+- [[CREATURE]] ... [[/CREATURE]] - creature entry.
 
-You can use these in your own text too. Toggle auto-capture in Settings ->
-Orchestration.
+Story Bible markers
+-------------------
+- [[BIBLE:premise]] ... [[/BIBLE]] or [[PREMISE]] ... [[/PREMISE]]
+- [[BIBLE:synopsis]] ... [[/BIBLE]], [[BIBLE:genreTone]] ... [[/BIBLE]], etc.
+  (field name must match a Story Bible key: premise, logline, genreTone,
+  worldRules, styleNotes, synopsis, themes, pointOfView, tense)
+
+World State markers
+-------------------
+- [[WORLDSTATE:currentLocation]] ... [[/WORLDSTATE]]
+- [[WORLDSTATE:currentDate]] ... [[/WORLDSTATE]]
+- Shorthand: [[LOCATION]] ... [[/LOCATION]], [[DATE]] ... [[/DATE]], etc.
+
+Use plain tags only (not **[[REMEMBER]]**). Unclosed [[REMEMBER]] lines are
+still captured when possible.
+
+Canon capture mode (Settings -> Orchestration)
+----------------------------------------------
+- Fill empty only - only blank fields and new lore entries are written.
+- Append with note - adds captured text after a --- Added from agent --- line.
+- Merge into one entry - combines into one lore entry or field, skipping
+  duplicate paragraphs.
+
+Orchestrated runs capture each agent step plus the Manager synthesis. Open
+Story Bible tabs refresh automatically when capture succeeds.
 
 
 12. TIPS AND TROUBLESHOOTING

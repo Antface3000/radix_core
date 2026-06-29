@@ -61,6 +61,7 @@ class RadixApp(ctk.CTk):
 
         self.engine = AgentEngine(settings=self.settings)
         self.engine.flush_callback = self.flush_project_context
+        self.engine.capture_callback = self.refresh_canon_panels
         self.writing = WritingEngine(self.engine)
         self.comfy = ComfyClient(self.settings, self.engine)
         self.tts = TTSClient(self.settings)
@@ -142,6 +143,18 @@ class RadixApp(ctk.CTk):
         panel_text.apply_font_tree(self.editor, self.settings)
         for panel in self._open_panels():
             panel_text.apply_font_tree(panel, self.settings)
+
+    def refresh_canon_panels(self):
+        """Reload Story Bible, Lorebook, and World State after agent capture."""
+        panel = self._story_bible_panel()
+        if panel is not None:
+            panel._load_bible()
+            if hasattr(panel, "lore_panel"):
+                panel.lore_panel._reload_list()
+            if hasattr(panel, "world_panel"):
+                panel.world_panel.on_show()
+        self.refresh_worldbar()
+        self.refresh_setting_previews()
 
     def _story_bible_panel(self):
         if isinstance(self._dock_panel, StoryBiblePanel):

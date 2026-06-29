@@ -106,6 +106,7 @@ MEMORY_RECENT_TURNS = 4
 # are auto-filed back into the project's lore.json.
 CONTEXT_INJECT = True
 CONTEXT_AUTO_CAPTURE = True
+CONTEXT_CAPTURE_BIBLE_MODE = "empty"   # empty | append | merge
 CONTEXT_INJECT_MAX_CHARS = 6000
 
 # --- Services (local, self-hosted) ------------------------------------------

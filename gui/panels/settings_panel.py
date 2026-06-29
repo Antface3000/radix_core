@@ -420,8 +420,31 @@ class SettingsPanel(BasePanel):
         ctk.CTkCheckBox(f, text="Inject setting (story bible + lore + world state)",
                         variable=self.orch_inject).pack(anchor="w", padx=12, pady=4)
         self.orch_capture = ctk.BooleanVar(value=self.s.get("context.auto_capture", True))
-        ctk.CTkCheckBox(f, text="Auto-capture [[REMEMBER]] into lore",
-                        variable=self.orch_capture).pack(anchor="w", padx=12, pady=4)
+        capture_cb = ctk.CTkCheckBox(
+            f, text="Auto-capture canon markers from agent output",
+            variable=self.orch_capture)
+        capture_cb.pack(anchor="w", padx=12, pady=4)
+        attach(capture_cb,
+               "[[REMEMBER]] / [[CHARACTER]] / [[WORLD]] -> Lorebook; "
+               "[[BIBLE:*]] -> Story Bible; [[WORLDSTATE:*]] -> World State.")
+        ctk.CTkLabel(f, text="Canon capture mode", anchor="w").pack(
+            fill="x", padx=12, pady=(8, 2))
+        self.orch_bible_mode = ctk.CTkOptionMenu(
+            f, values=["Fill empty only", "Append with note", "Merge into one entry"])
+        _mode = self.s.get("context.capture_bible_mode", "empty")
+        if _mode == "replace":
+            _mode = "merge"
+        _mode_labels = {
+            "empty": "Fill empty only",
+            "append": "Append with note",
+            "merge": "Merge into one entry",
+        }
+        self.orch_bible_mode.set(_mode_labels.get(_mode, "Fill empty only"))
+        self.orch_bible_mode.pack(anchor="w", padx=12)
+        attach(self.orch_bible_mode,
+               "Fill empty: only blank fields / new lore entries. Append with note: "
+               "adds captured text after a --- Added from agent --- separator. "
+               "Merge: combines into one entry, skipping duplicate paragraphs.")
         ctk.CTkButton(tab, text="Save Orchestration", command=self._save_orch).pack(anchor="e", pady=8)
 
     def _save_orch(self):
@@ -437,6 +460,13 @@ class SettingsPanel(BasePanel):
         self.s.set("orchestration.hitl", bool(self.orch_hitl.get()), save=False)
         self.s.set("context.inject", bool(self.orch_inject.get()), save=False)
         self.s.set("context.auto_capture", bool(self.orch_capture.get()), save=False)
+        _label_to_mode = {
+            "Fill empty only": "empty",
+            "Append with note": "append",
+            "Merge into one entry": "merge",
+        }
+        self.s.set("context.capture_bible_mode",
+                   _label_to_mode.get(self.orch_bible_mode.get(), "empty"), save=False)
         self.s.set("context.inject_max_chars", to_int(self.orch["inject_max_chars"], 6000), save=False)
         self.s.set("context.memory_recent_turns", to_int(self.orch["memory_recent_turns"], 4))
         self.app.engine.context_inject = bool(self.orch_inject.get())

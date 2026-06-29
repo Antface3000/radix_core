@@ -46,6 +46,8 @@ class AgentEngine:
         self.context_inject = self.settings.get("context.inject", True)
         self.context_auto_capture = self.settings.get("context.auto_capture", True)
         self.flush_callback = None  # optional GUI hook: flush unsaved story data
+        self.capture_callback = None  # optional GUI hook: refresh canon panels
+        self._last_capture_summary = worldcontext.empty_capture_summary()
 
         self.project_id = None
         self.paths = None
@@ -136,6 +138,7 @@ class AgentEngine:
                      max_tokens=None):
         """Run one persona and return the (cleaned) response text."""
         self._flush_context()
+        self._last_capture_summary = worldcontext.empty_capture_summary()
         p = self._resolve_persona(persona_identifier)
         messages = self._build_messages(p, user_input)
         chunks = list(self._stream_generate(p, messages, show_think, max_tokens))
@@ -147,6 +150,7 @@ class AgentEngine:
                     max_tokens=None):
         """Generator yielding visible text deltas as they are produced."""
         self._flush_context()
+        self._last_capture_summary = worldcontext.empty_capture_summary()
         p = self._resolve_persona(persona_identifier)
         messages = self._build_messages(p, user_input)
         for delta in self._stream_generate(p, messages, show_think, max_tokens):
@@ -214,6 +218,7 @@ class AgentEngine:
         planning and checks in before synthesis.
         """
         self._flush_context()
+        self._last_capture_summary = worldcontext.empty_capture_summary()
         manager = self._resolve_persona(
             self.settings.get("orchestration.manager_key", "manager"))
         hitl = bool(self.settings.get("orchestration.hitl", False)) and callable(ask_user)
@@ -259,9 +264,9 @@ class AgentEngine:
                 p, augmented_task, instruction, working)
             for delta in self._stream_generate(p, messages, show_think):
                 yield ("delta", p, delta)
-            _, visible = self._last_generation
+            raw, visible = self._last_generation
             self.memory.append(p["key"], instruction, visible)
-            self._capture(p, visible)
+            self._capture(p, raw)
             working.append((p["display_name"], visible))
             yield ("step_done", p)
 
@@ -292,8 +297,9 @@ class AgentEngine:
             messages = self._build_synthesis_messages(augmented_task, working)
             for delta in self._stream_generate(manager, messages, show_think):
                 yield ("delta", manager, delta)
-            _, visible = self._last_generation
+            raw, visible = self._last_generation
             self.memory.append(manager["key"], "[synthesis] " + task, visible)
+            self._capture(manager, raw)
 
         yield ("done",)
 
@@ -411,7 +417,16 @@ class AgentEngine:
         system = system or (
             "You are The Manager. Synthesize the agents' work into one coherent "
             "final result for the task. Resolve conflicts, surface any "
-            "unresolved fact-check flags, and keep it tight and actionable.")
+            "unresolved fact-check flags, and keep it tight and actionable.\n\n"
+            "CANON EXPORT: Wrap durable facts in plain markers (no markdown inside "
+            "tags):\n"
+            "- [[CHARACTER:Name]]...[[/CHARACTER]] for character profiles\n"
+            "- [[WORLD]]...[[/WORLD]] for places/factions\n"
+            "- [[BIBLE:premise]]...[[/BIBLE]], [[BIBLE:synopsis]]...[[/BIBLE]], "
+            "[[BIBLE:genreTone]]...[[/BIBLE]], [[BIBLE:worldRules]]...[[/BIBLE]]\n"
+            "- [[WORLDSTATE:currentLocation]]...[[/WORLDSTATE]], "
+            "[[WORLDSTATE:currentDate]]...[[/WORLDSTATE]]\n"
+            "Include these markers in your synthesis so the project canon updates.")
         user = f"TASK:\n{task}\n\nAGENT OUTPUTS:\n"
         for name, out in working:
             user += f"\n[{name}]:\n{out}\n"
@@ -430,12 +445,24 @@ class AgentEngine:
         self._capture(persona, raw)
 
     def _capture(self, persona, raw_text):
-        if not self.context_auto_capture:
+        if not self.context_auto_capture or not raw_text:
             return
-        worldcontext.capture_to_lore(
+        bible_mode = self.settings.get("context.capture_bible_mode", "empty")
+        if bible_mode == "replace":
+            bible_mode = "merge"
+        summary = worldcontext.capture_from_agent(
             self.paths, raw_text,
-            default_kind=persona.get("capture_kind"),
-            source=persona["display_name"])
+            default_kind=persona.get("capture_kind") or "world",
+            source=persona.get("display_name", "agent"),
+            bible_mode=bible_mode,
+        )
+        self._last_capture_summary = worldcontext.merge_capture_summaries(
+            self._last_capture_summary, summary)
+        if callable(self.capture_callback):
+            try:
+                self.capture_callback()
+            except Exception:
+                pass
 
     # ----------------------- utilities -------------------------------------
     @staticmethod

@@ -39,14 +39,74 @@ CAPTURE_MARKERS = {
 }
 GENERIC_MARKER = "REMEMBER"
 
+BIBLE_KEYS = {key for _label, key in BIBLE_FIELD_ORDER} | {"themes"}
+BIBLE_ALIASES = {
+    "premise": "premise",
+    "logline": "logline",
+    "genretone": "genreTone",
+    "genre": "genreTone",
+    "genre_tone": "genreTone",
+    "pov": "pointOfView",
+    "pointofview": "pointOfView",
+    "tense": "tense",
+    "worldrules": "worldRules",
+    "world_rules": "worldRules",
+    "stylenotes": "styleNotes",
+    "style_notes": "styleNotes",
+    "synopsis": "synopsis",
+    "themes": "themes",
+}
+
+WORLD_STATE_KEYS = {
+    "currentdate": "currentDate",
+    "date": "currentDate",
+    "currentlocation": "currentLocation",
+    "location": "currentLocation",
+    "scene": "scene",
+    "timeline": "timeline",
+    "factions": "factions",
+    "ongoingevents": "ongoingEvents",
+    "events": "ongoingEvents",
+    "facts": "facts",
+}
+
+WORLD_STATE_LIST_KEYS = {"timeline", "factions", "ongoingEvents", "facts"}
+
 
 def _marker_regex(marker):
     m = re.escape(marker)
     return re.compile(rf"\[\[{m}\]\](.*?)\[\[/{m}\]\]", re.DOTALL | re.IGNORECASE)
 
 
+def _named_marker_regex(tag):
+    t = re.escape(tag)
+    return re.compile(
+        rf"\[\[{t}(?::([^\]]+))?\]\](.*?)\[\[/{t}\]\]",
+        re.DOTALL | re.IGNORECASE,
+    )
+
+
 _MARKER_RES = {tag: _marker_regex(tag) for tag in CAPTURE_MARKERS}
 _GENERIC_RE = _marker_regex(GENERIC_MARKER)
+_NAMED_LORE_RES = {tag: _named_marker_regex(tag) for tag in CAPTURE_MARKERS}
+_BIBLE_RE = re.compile(
+    r"\[\[BIBLE:(?P<field>[^\]]+)\]\](?P<body>.*?)\[\[/BIBLE\]\]",
+    re.DOTALL | re.IGNORECASE,
+)
+_BIBLE_SHORT_RE = re.compile(
+    r"\[\[(?P<field>PREMISE|LOGLINE|GENRETONE|GENRE|POV|POINTOFVIEW|TENSE|"
+    r"WORLDRULES|STYLENOTES|SYNOPSIS|THEMES)\]\](?P<body>.*?)\[\[/\1\]\]",
+    re.DOTALL | re.IGNORECASE,
+)
+_WORLDSTATE_RE = re.compile(
+    r"\[\[WORLDSTATE:(?P<field>[^\]]+)\]\](?P<body>.*?)\[\[/WORLDSTATE\]\]",
+    re.DOTALL | re.IGNORECASE,
+)
+_WORLDSTATE_SHORT_RE = re.compile(
+    r"\[\[(?P<field>DATE|LOCATION|SCENE|TIMELINE|FACTIONS|EVENTS|FACTS)\]\]"
+    r"(?P<body>.*?)\[\[/\1\]\]",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def _bullet_list(items, limit=12):
@@ -163,8 +223,10 @@ def assemble(paths, max_chars=6000, exclude_bible_keys=None):
     return text
 
 
-def _name_from_block(block):
+def _name_from_block(block, explicit_name=None):
     """Derive an entry name from a captured block's first line/sentence."""
+    if explicit_name and explicit_name.strip():
+        return explicit_name.strip()[:60]
     first = block.strip().splitlines()[0].strip() if block.strip() else "Note"
     if ":" in first and len(first.split(":", 1)[0]) <= 60:
         first = first.split(":", 1)[0]
@@ -172,36 +234,286 @@ def _name_from_block(block):
     return (first[:60] or "Note").strip()
 
 
-def capture_to_lore(paths, raw_text, default_kind="world", source="agent"):
-    """Extract tagged blocks from `raw_text` and append them to lore.json."""
-    if not raw_text:
-        return []
-    created = []
+def _normalize_capture_text(text):
+    """Strip common markdown wrappers around capture tags."""
+    if not text:
+        return ""
+    cleaned = re.sub(r"\*+\[\[([^\]]+)\]\]\*+", r"[[\1]]", text)
+    cleaned = re.sub(r"_+\[\[([^\]]+)\]\]_+", r"[[\1]]", cleaned)
+    return cleaned
+
+
+def _paragraph_after_open(text, open_tag):
+    """Fallback: text after unclosed [[TAG]] until blank line or end."""
+    pattern = re.compile(rf"\[\[{re.escape(open_tag)}\]\]\s*", re.IGNORECASE)
+    match = pattern.search(text)
+    if not match:
+        return None
+    rest = text[match.end():]
+    close = re.search(rf"\[\[/{re.escape(open_tag)}\]\]", rest, re.IGNORECASE)
+    if close:
+        return None
+    chunk = rest.split("\n\n", 1)[0].strip()
+    chunk = re.sub(r"\*+$", "", chunk).strip()
+    return chunk or None
+
+
+def _resolve_bible_field(raw_field):
+    key = (raw_field or "").strip()
+    if not key:
+        return None
+    if key in BIBLE_KEYS:
+        return key
+    return BIBLE_ALIASES.get(key.lower().replace(" ", "").replace("&", ""))
+
+
+CAPTURE_APPEND_NOTE = "--- Agent capture ---"
+
+
+def _append_separator(source=None):
+    src = (source or "agent").strip() or "agent"
+    return f"--- Added from {src} ---"
+
+
+def _merge_text_blocks(old, new):
+    """Combine two text blocks into one entry, skipping duplicate paragraphs."""
+    old = (old or "").strip()
+    new = (new or "").strip()
+    if not new:
+        return old
+    if not old:
+        return new
+    if new == old or new in old:
+        return old
+    if old in new:
+        return new
+    seen = set()
+    merged = []
+    for para in old.split("\n\n") + new.split("\n\n"):
+        chunk = para.strip()
+        if not chunk:
+            continue
+        key = chunk.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(chunk)
+    return "\n\n".join(merged)
+
+
+def _apply_text_value(old, new_val, mode, source=None):
+    """Merge captured text into an existing scalar field."""
+    new_val = (new_val or "").strip()
+    if not new_val:
+        return old
+    old = (old or "").strip() if isinstance(old, str) else ""
+    if mode == "empty" and old:
+        return old
+    if not old:
+        return new_val
+    if mode == "append":
+        return old + "\n\n" + _append_separator(source) + "\n\n" + new_val
+    if mode == "merge":
+        return _merge_text_blocks(old, new_val)
+    # Legacy "replace" -> merge behavior
+    return _merge_text_blocks(old, new_val)
+
+
+def _resolve_world_field(raw_field):
+    key = (raw_field or "").strip()
+    if not key:
+        return None
+    if key in world_state.DEFAULT_STATE:
+        return key
+    return WORLD_STATE_ALIASES.get(key.lower().replace(" ", ""))
+
+
+def _apply_bible_value(current, field, new_val, mode, source=None):
+    new_val = (new_val or "").strip()
+    if not new_val:
+        return current
+    if field == "themes":
+        if isinstance(new_val, str):
+            items = [t.strip() for t in re.split(r"[,;\n]+", new_val) if t.strip()]
+        else:
+            items = new_val
+        old = current.get("themes") or []
+        if mode == "empty" and old:
+            return current
+        if not old:
+            current["themes"] = items
+            return current
+        if mode == "append":
+            note = _append_separator(source)
+            old_text = ", ".join(old)
+            combined = _apply_text_value(old_text, ", ".join(items), "append", source)
+            current["themes"] = [t.strip() for t in combined.split(",") if t.strip()]
+        else:
+            current["themes"] = list(dict.fromkeys(old + items))
+        return current
+    old = (current.get(field) or "").strip() if isinstance(current.get(field), str) else ""
+    current[field] = _apply_text_value(old, new_val, mode, source)
+    return current
+
+
+def _apply_world_value(current, field, new_val, mode, source=None):
+    new_val = (new_val or "").strip()
+    if not new_val:
+        return current
+    if field in WORLD_STATE_LIST_KEYS:
+        items = [ln.strip() for ln in new_val.splitlines() if ln.strip()]
+        if not items and new_val:
+            items = [new_val]
+        old = current.get(field) or []
+        if mode == "empty" and old:
+            return current
+        if not old:
+            current[field] = items
+            return current
+        if mode == "append":
+            note = _append_separator(source)
+            current[field] = list(dict.fromkeys(old + [note] + items))
+        else:
+            current[field] = list(dict.fromkeys(old + items))
+        return current
+    old = (current.get(field) or "").strip()
+    current[field] = _apply_text_value(old, new_val, mode, source)
+    return current
+
+
+def empty_capture_summary():
+    return {"lore": [], "bible": {}, "world_state": {}}
+
+
+def merge_capture_summaries(base, extra):
+    out = empty_capture_summary()
+    out["lore"] = list(base.get("lore") or []) + list(extra.get("lore") or [])
+    out["bible"] = {**(base.get("bible") or {}), **(extra.get("bible") or {})}
+    out["world_state"] = {
+        **(base.get("world_state") or {}),
+        **(extra.get("world_state") or {}),
+    }
+    return out
+
+
+def format_capture_summary(summary):
+    """Human-readable one-liner for toasts."""
+    parts = []
+    lore = summary.get("lore") or []
+    if lore:
+        names = [e.get("name", "?") for e in lore[:4]]
+        label = f"{len(lore)} lore entr{'y' if len(lore) == 1 else 'ies'}"
+        if names:
+            label += f" ({', '.join(names)}"
+            if len(lore) > 4:
+                label += ", ..."
+            label += ")"
+        parts.append(label)
+    bible = summary.get("bible") or {}
+    if bible:
+        parts.append(", ".join(bible.keys()))
+    ws = summary.get("world_state") or {}
+    if ws:
+        parts.append(", ".join(ws.keys()))
+    if not parts:
+        return ""
+    return "Canon updated: " + "; ".join(parts)
+
+
+def capture_from_agent(paths, raw_text, default_kind="world", source="agent",
+                       bible_mode="empty"):
+    """Extract tagged blocks and apply to lore, story bible, and world state."""
+    summary = empty_capture_summary()
+    if not raw_text or not paths:
+        return summary
+
+    mode = bible_mode if bible_mode in ("empty", "append", "merge") else "merge"
+    if mode == "replace":
+        mode = "merge"
+
+    text = _normalize_capture_text(raw_text)
+    lore_path = paths["lore"]
+    seen_lore = set()
+
+    def _file_lore(kind, block, explicit_name=None):
+        block = (block or "").strip()
+        if not block:
+            return
+        name = _name_from_block(block, explicit_name)
+        dedupe = (kind, name.lower())
+        if dedupe in seen_lore:
+            return
+        seen_lore.add(dedupe)
+        entry = lore.upsert(lore_path, {
+            "type": kind,
+            "name": name,
+            "notes": block,
+            "keywords": [name],
+        }, mode=mode, source=source)
+        summary["lore"].append(entry)
 
     for tag, kind in CAPTURE_MARKERS.items():
-        for match in _MARKER_RES[tag].finditer(raw_text):
-            block = match.group(1).strip()
-            if not block:
-                continue
-            entry = lore.add(paths["lore"], {
-                "type": kind,
-                "name": _name_from_block(block),
-                "notes": block,
-                "keywords": [_name_from_block(block)],
-            })
-            created.append(entry)
+        matched = False
+        for match in _NAMED_LORE_RES[tag].finditer(text):
+            matched = True
+            explicit = match.group(1)
+            block = match.group(2)
+            _file_lore(kind, block, explicit)
+        if not matched:
+            unclosed = _paragraph_after_open(text, tag)
+            if unclosed:
+                _file_lore(kind, unclosed)
 
     if default_kind:
-        for match in _GENERIC_RE.finditer(raw_text):
-            block = match.group(1).strip()
-            if not block:
-                continue
-            entry = lore.add(paths["lore"], {
-                "type": default_kind,
-                "name": _name_from_block(block),
-                "notes": block,
-                "keywords": [_name_from_block(block)],
-            })
-            created.append(entry)
+        matched = False
+        for match in _GENERIC_RE.finditer(text):
+            matched = True
+            _file_lore(default_kind, match.group(1))
+        if not matched:
+            unclosed = _paragraph_after_open(text, GENERIC_MARKER)
+            if unclosed:
+                _file_lore(default_kind, unclosed)
 
-    return created
+    bible_patch = {}
+    bible_current = story_bible.read(paths["bible"])
+    for match in _BIBLE_RE.finditer(text):
+        field = _resolve_bible_field(match.group("field"))
+        if field:
+            bible_current = _apply_bible_value(
+                bible_current, field, match.group("body"), mode, source=source)
+            bible_patch[field] = bible_current.get(field)
+    for match in _BIBLE_SHORT_RE.finditer(text):
+        field = _resolve_bible_field(match.group("field"))
+        if field:
+            bible_current = _apply_bible_value(
+                bible_current, field, match.group("body"), mode, source=source)
+            bible_patch[field] = bible_current.get(field)
+    if bible_patch:
+        story_bible.write(paths["bible"], bible_current)
+        summary["bible"] = bible_patch
+
+    ws_patch = {}
+    ws_current = world_state.read(paths["world_state"])
+    for match in _WORLDSTATE_RE.finditer(text):
+        field = _resolve_world_field(match.group("field"))
+        if field:
+            ws_current = _apply_world_value(
+                ws_current, field, match.group("body"), mode, source=source)
+            ws_patch[field] = ws_current.get(field)
+    for match in _WORLDSTATE_SHORT_RE.finditer(text):
+        field = _resolve_world_field(match.group("field"))
+        if field:
+            ws_current = _apply_world_value(
+                ws_current, field, match.group("body"), mode, source=source)
+            ws_patch[field] = ws_current.get(field)
+    if ws_patch:
+        world_state.write(paths["world_state"], ws_current)
+        summary["world_state"] = ws_patch
+
+    return summary
+
+
+def capture_to_lore(paths, raw_text, default_kind="world", source="agent"):
+    """Legacy wrapper: lore-only capture."""
+    summary = capture_from_agent(paths, raw_text, default_kind, source)
+    return summary.get("lore") or []

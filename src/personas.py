@@ -29,9 +29,17 @@ TIER_FLAVOR = "Tier 3 - Flavor"
 
 # Common persistence instruction appended to architect/operator personas.
 _REMEMBER_NOTE = (
-    "\nPERSISTENCE: When you establish a durable fact that should become canon, "
-    "wrap it in [[REMEMBER]] ... [[/REMEMBER]]. It will be filed into the "
-    "project's lore automatically. Put ONLY canon-worthy facts inside the tags."
+    "\nPERSISTENCE: When you establish durable canon, wrap it in plain markers "
+    "(no markdown inside the tags — do not write **[[REMEMBER]]**):\n"
+    "- [[REMEMBER]] ... [[/REMEMBER]] — general fact (filed to Lorebook)\n"
+    "- [[CHARACTER:Name]] ... [[/CHARACTER]] — character profile\n"
+    "- [[WORLD]] ... [[/WORLD]] — place, faction, or quest\n"
+    "- [[BIBLE:premise]] ... [[/BIBLE]], [[BIBLE:synopsis]] ... [[/BIBLE]], "
+    "[[BIBLE:genreTone]] ... [[/BIBLE]], [[BIBLE:worldRules]] ... [[/BIBLE]] "
+    "— Story Bible fields\n"
+    "- [[WORLDSTATE:currentLocation]] ... [[/WORLDSTATE]], "
+    "[[WORLDSTATE:currentDate]] ... [[/WORLDSTATE]] — World State\n"
+    "Put ONLY canon-worthy facts inside the tags."
 )
 
 PERSONAS = [

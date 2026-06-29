@@ -48,6 +48,7 @@ DEFAULT_GLOBAL = {
     "context": {
         "inject": config.CONTEXT_INJECT,
         "auto_capture": config.CONTEXT_AUTO_CAPTURE,
+        "capture_bible_mode": config.CONTEXT_CAPTURE_BIBLE_MODE,
         "inject_max_chars": config.CONTEXT_INJECT_MAX_CHARS,
         "memory_recent_turns": config.MEMORY_RECENT_TURNS,
     },

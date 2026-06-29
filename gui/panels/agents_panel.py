@@ -291,6 +291,15 @@ class AgentsPanel(BasePanel):
                 elif kind == "status":
                     self.status.configure(text=a)
                 elif kind == "done":
+                    summary_msg = worldcontext.format_capture_summary(
+                        self.app.engine._last_capture_summary)
+                    if summary_msg:
+                        self.app.toast(summary_msg, kind="success")
+                    elif self.orchestrate.get() and self.app.engine.context_auto_capture:
+                        self.app.toast(
+                            "No canon markers captured. Use [[REMEMBER]], "
+                            "[[BIBLE:*]], or [[WORLDSTATE:*]] tags.",
+                            kind="info")
                     self._set_busy(False, f"Done.  {len(self.last_response.split())} words.")
                 elif kind == "error":
                     self._start(a)
