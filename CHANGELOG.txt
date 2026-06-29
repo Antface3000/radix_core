@@ -10,6 +10,18 @@ Format loosely based on Keep a Changelog. Versioning follows Semantic Versioning
 ============
 
 
+[0.2.1] - 2026-06-28
+====================
+
+Fixed
+-----
+- Lorebook / Story Bible UI in narrow dock: labels wrap, fields stack, list and
+  form reflow instead of truncating.
+- Generate and Save buttons use readable theme styles (no white-on-lime defaults).
+- Active tab text stays dark on lime when switching Story Bible tabs.
+- Embedded Lorebook and World State tabs drop duplicate headers inside Story Bible.
+- Shorter lore field labels with tooltips for full descriptions.
+
 [0.2.0] - 2026-06-28
 ====================
 

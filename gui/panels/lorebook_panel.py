@@ -19,110 +19,159 @@ except Exception:
     Image = None
     PIL_OK = False
 
+# Short labels in the UI; full descriptions in tooltips (narrow dock friendly).
 _FIELDS = [
-    ("name", "Name", False),
-    ("type", "Type (character/world)", False),
-    ("notes", "Notes", True),
-    ("appearance", "Appearance (used for images)", True),
-    ("goals", "Goals", True),
-    ("imagePrompt", "Image prompt override", True),
+    ("name", "Name", False, ""),
+    ("type", "Type", False, "character or world"),
+    ("notes", "Notes", True, ""),
+    ("appearance", "Appearance", True, "Used for image generation"),
+    ("goals", "Goals", True, ""),
+    ("imagePrompt", "Image prompt", True, "Optional override for ComfyUI image generation"),
 ]
+
+_STACK_BELOW = 620
 
 
 class LoreBookPanel(BasePanel):
     title = "Lore Book"
 
-    def __init__(self, master, app):
+    def __init__(self, master, app, embedded=False):
         super().__init__(master, app)
-        self.grid_rowconfigure(1, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=2)
+        self.embedded = embedded
+        self._stacked = False
         self.current_id = None
         self._dirty = False
         self._gen_registry = GenerateRegistry()
-        self.header("Lore Book", "Canonical characters and world entries. Flag "
-                                 "entries 'always include' to inject them into agents.")
-        self._build_list()
-        self._build_form()
+
+        content_row = 0
+        if not embedded:
+            self.grid_rowconfigure(1, weight=1)
+            self.header("Lore Book", "Canonical characters and world entries. Flag "
+                                     "entries 'always include' to inject them into agents.")
+            content_row = 1
+        else:
+            self.grid_rowconfigure(0, weight=1)
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=2)
+
+        self._body = ctk.CTkFrame(self, fg_color="transparent")
+        self._body.grid(row=content_row, column=0, columnspan=2, sticky="nsew")
+        self._body.grid_columnconfigure(0, weight=1)
+        self._body.grid_columnconfigure(1, weight=2)
+        self._body.grid_rowconfigure(0, weight=1)
+
+        self._build_list(self._body)
+        self._build_form(self._body)
+        self.bind("<Configure>", self._reflow_layout, add="+")
         self.on_show()
 
     def _paths(self):
         return self.app.engine.paths
 
+    def _reflow_layout(self, event=None):
+        if event is not None and event.widget is not self:
+            return
+        w = self.winfo_width()
+        if w < 2:
+            return
+        stack = w < _STACK_BELOW
+        if stack == self._stacked:
+            return
+        self._stacked = stack
+        if stack:
+            self._body.grid_columnconfigure(1, weight=0)
+            self.list_frame.grid(row=0, column=0, sticky="nsew", padx=(4, 4), pady=(0, 4))
+            self.form.grid(row=1, column=0, sticky="nsew", padx=(4, 4), pady=(4, 4))
+            self._body.grid_rowconfigure(0, weight=0)
+            self._body.grid_rowconfigure(1, weight=1)
+        else:
+            self._body.grid_rowconfigure(0, weight=1)
+            self._body.grid_rowconfigure(1, weight=0)
+            self._body.grid_columnconfigure(1, weight=2)
+            self.list_frame.grid(row=0, column=0, sticky="nsew", padx=(4, 8), pady=4)
+            self.form.grid(row=0, column=1, sticky="nsew", padx=(4, 4), pady=4)
+
     # ----------------------- list ------------------------------------------
-    def _build_list(self):
-        left = ctk.CTkFrame(self, fg_color=theme.BG_CARD)
-        left.grid(row=1, column=0, sticky="nsew", padx=(16, 8), pady=(4, 16))
-        left.grid_rowconfigure(1, weight=1)
-        left.grid_columnconfigure(0, weight=1)
-        topbar = ctk.CTkFrame(left, fg_color="transparent")
+    def _build_list(self, parent):
+        self.list_frame = ctk.CTkFrame(parent, fg_color=theme.BG_CARD)
+        self.list_frame.grid(row=0, column=0, sticky="nsew", padx=(4, 8), pady=4)
+        self.list_frame.grid_rowconfigure(1, weight=1)
+        self.list_frame.grid_columnconfigure(0, weight=1)
+
+        topbar = ctk.CTkFrame(self.list_frame, fg_color="transparent")
         topbar.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
-        ctk.CTkButton(topbar, text="+ Character", width=110,
-                      command=lambda: self._new("character")).pack(side="left", padx=2)
-        ctk.CTkButton(topbar, text="+ World", width=90,
-                      command=lambda: self._new("world")).pack(side="left", padx=2)
-        self.listbox = ctk.CTkScrollableFrame(left, fg_color=theme.BG_SIDEBAR)
+        ctk.CTkButton(topbar, text="+ Character", width=100,
+                      command=lambda: self._new("character"),
+                      **theme.secondary_btn()).pack(side="left", padx=2)
+        ctk.CTkButton(topbar, text="+ World", width=88,
+                      command=lambda: self._new("world"),
+                      **theme.secondary_btn()).pack(side="left", padx=2)
+
+        self.listbox = ctk.CTkScrollableFrame(self.list_frame, fg_color=theme.BG_SIDEBAR)
         self.listbox.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
         self.listbox.grid_columnconfigure(0, weight=1)
+        bind_scroll_width(self.listbox)
 
-    def _build_form(self):
-        right = ctk.CTkScrollableFrame(self, fg_color=theme.BG_CARD)
-        right.grid(row=1, column=1, sticky="nsew", padx=(8, 16), pady=(4, 16))
-        right.grid_columnconfigure(0, weight=1)
-        bind_scroll_width(right)
-        self.form = right
+    def _build_form(self, parent):
+        self.form = ctk.CTkScrollableFrame(parent, fg_color=theme.BG_CARD)
+        self.form.grid(row=0, column=1, sticky="nsew", padx=(4, 4), pady=4)
+        self.form.grid_columnconfigure(0, weight=1)
+        bind_scroll_width(self.form)
         self.widgets = {}
         row = 0
-        for key, label, multiline in _FIELDS:
+        for key, label, multiline, tip in _FIELDS:
             if multiline:
-                box_h, min_h, max_h = 110, 80, 360
+                box_h, min_h, max_h = 100, 72, 320
             else:
-                box_h, min_h, max_h = 42, 32, 120
+                box_h, min_h, max_h = 40, 32, 100
             block = attach_field_generate(
-                right, self.app, label, multiline=multiline,
+                self.form, self.app, label, multiline=multiline,
                 height=box_h, min_height=min_h, max_height=max_h,
                 context_fn=self._lore_context,
                 registry=self._gen_registry,
+                tooltip=tip,
             )
-            block.grid(row=row, column=0, sticky="ew", padx=12, pady=(0, 4))
-            if key == "imagePrompt":
-                attach(block.widget, "Overrides the auto-built image prompt for this entry. "
-                          "Leave blank to use Appearance/Notes.")
+            block.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 6))
+            if key == "imagePrompt" and tip:
+                attach(block.widget, tip)
             self.widgets[key] = block.widget
             block.widget._textbox.bind("<KeyRelease>", self._mark_dirty, add="+")
             row += 1
 
-        flags = ctk.CTkFrame(right, fg_color="transparent")
-        flags.grid(row=row, column=0, sticky="ew", padx=12, pady=6)
+        flags = ctk.CTkFrame(self.form, fg_color="transparent")
+        flags.grid(row=row, column=0, sticky="ew", padx=8, pady=6)
         self.always = ctk.BooleanVar()
         self.pinned = ctk.BooleanVar()
         always_cb = ctk.CTkCheckBox(flags, text="Always include", variable=self.always)
         always_cb.pack(side="left", padx=4)
-        attach(always_cb, "Always inject this entry into agent prompts, even if "
-                          "auto-scan doesn't pick it up.")
+        attach(always_cb, "Always inject this entry into agent prompts.")
         always_cb.configure(command=self._mark_dirty)
         pinned_cb = ctk.CTkCheckBox(flags, text="Pinned", variable=self.pinned)
         pinned_cb.pack(side="left", padx=4)
-        attach(pinned_cb, "Pin to the top of the lore list and give it priority "
-                          "when context space is limited.")
+        attach(pinned_cb, "Pin for priority in agent context.")
         pinned_cb.configure(command=self._mark_dirty)
 
-        btns = ctk.CTkFrame(right, fg_color="transparent")
-        btns.grid(row=row + 1, column=0, sticky="ew", padx=12, pady=8)
-        self.save_btn = ctk.CTkButton(btns, text="Save", width=90, command=self._save)
-        self.save_btn.pack(side="left", padx=2)
-        ctk.CTkButton(btns, text="Delete", width=90, fg_color=theme.RED,
-                      hover_color="#a82a2a", command=self._delete).pack(side="left", padx=2)
-        gen_btn = ctk.CTkButton(btns, text="Generate Image", command=self._generate,
-                                fg_color=theme.PURPLE, hover_color="#5e1f96")
-        gen_btn.pack(side="left", padx=2)
-        attach(gen_btn, "Render a portrait/image for this entry via ComfyUI using "
-                        "its appearance/image prompt.")
+        btns = ctk.CTkFrame(self.form, fg_color="transparent")
+        btns.grid(row=row + 1, column=0, sticky="ew", padx=8, pady=8)
+        btns.grid_columnconfigure(0, weight=1)
+        btn_inner = ctk.CTkFrame(btns, fg_color="transparent")
+        btn_inner.grid(row=0, column=0, sticky="ew")
+        self.save_btn = ctk.CTkButton(btn_inner, text="Save", width=88, command=self._save,
+                                      **theme.primary_btn())
+        self.save_btn.pack(side="left", padx=2, pady=2)
+        ctk.CTkButton(btn_inner, text="Delete", width=88, command=self._delete,
+                      **theme.danger_btn()).pack(side="left", padx=2, pady=2)
+        gen_img_btn = ctk.CTkButton(btn_inner, text="Generate Image", command=self._generate,
+                                    **theme.accent_btn(theme.PURPLE, "#5e1f96"))
+        gen_img_btn.pack(side="left", padx=2, pady=2)
+        attach(gen_img_btn, "Render via ComfyUI using appearance/notes.")
 
-        self.image_label = ctk.CTkLabel(right, text="(no image)", text_color=theme.TEXT_MUTED)
-        self.image_label.grid(row=row + 2, column=0, sticky="ew", padx=12, pady=8)
-        self.gen_status = ctk.CTkLabel(right, text="", text_color=theme.TEXT_MUTED)
-        self.gen_status.grid(row=row + 3, column=0, sticky="ew", padx=12, pady=(0, 8))
+        self.image_label = ctk.CTkLabel(self.form, text="(no image)", text_color=theme.TEXT_MUTED)
+        self.image_label.grid(row=row + 2, column=0, sticky="ew", padx=8, pady=8)
+        self.gen_status = ctk.CTkLabel(self.form, text="", text_color=theme.TEXT_MUTED,
+                                         wraplength=360, justify="left", anchor="w")
+        self.gen_status.grid(row=row + 3, column=0, sticky="ew", padx=8, pady=(0, 8))
 
     def _lore_context(self):
         paths = self._paths()
@@ -152,6 +201,7 @@ class LoreBookPanel(BasePanel):
     # ----------------------- data ------------------------------------------
     def on_show(self):
         self._reload_list()
+        self.after_idle(self._reflow_layout)
 
     def on_project_change(self):
         self.current_id = None
@@ -171,11 +221,14 @@ class LoreBookPanel(BasePanel):
             row += 1
             for e in entries:
                 mark = " *" if e.get("alwaysInclude") else ""
-                ctk.CTkButton(self.listbox, text=e["name"] + mark, anchor="w",
-                              fg_color="transparent", border_width=0,
-                              text_color=theme.TEXT_PRIMARY, hover_color=theme.BG_CARD,
-                              command=lambda x=e["id"]: self._select(x)
-                              ).grid(row=row, column=0, sticky="ew", padx=6, pady=1)
+                full = e["name"] + mark
+                btn = ctk.CTkButton(
+                    self.listbox, text=full, anchor="w",
+                    **theme.ghost_btn())
+                btn.configure(height=28)
+                btn.grid(row=row, column=0, sticky="ew", padx=4, pady=1)
+                attach(btn, full)
+                btn.configure(command=lambda x=e["id"]: self._select(x))
                 row += 1
 
     def _select(self, entry_id):

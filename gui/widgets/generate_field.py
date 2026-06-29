@@ -6,10 +6,12 @@ import threading
 import customtkinter as ctk
 
 from gui import theme
+from gui.panels.base import bind_wraplength
 from gui.tooltip import attach
 from src import story_bible_gen
 
 _MODES = story_bible_gen.MODE_LABELS
+_HEAD_STACK_BELOW = 300
 
 
 class GenerateRegistry:
@@ -99,7 +101,7 @@ class FieldGenerateBlock(ctk.CTkFrame):
 
     def __init__(self, master, app, field_label, multiline=True, height=100,
                  min_height=64, max_height=400, resizable=True,
-                 context_fn=None, registry=None):
+                 context_fn=None, registry=None, tooltip=""):
         super().__init__(master, fg_color="transparent")
         self.app = app
         self.field_label = field_label
@@ -109,27 +111,35 @@ class FieldGenerateBlock(ctk.CTkFrame):
         self._expanded = False
         self._queue = queue.Queue()
         self._append_mode = False
+        self._head_stacked = False
         self._prompt_row = 3 if (multiline and resizable) else 2
 
         self.grid_columnconfigure(0, weight=1)
 
-        # CTkTextbox for all fields — compact single-line style still wraps/scrolls.
         box_h = height if multiline else max(height, 42)
         self.widget = ctk.CTkTextbox(self, height=box_h, wrap="word",
                                      activate_scrollbars=True)
         _bind_textbox_scroll(self.widget)
 
-        head = ctk.CTkFrame(self, fg_color="transparent")
-        head.grid(row=0, column=0, sticky="ew")
-        head.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(head, text=field_label, anchor="w",
-                     text_color=theme.TEXT_PRIMARY).grid(row=0, column=0, sticky="w")
-        self.gen_btn = ctk.CTkButton(head, text="Generate", width=88,
-                                     command=self._toggle_prompt,
-                                     **theme.secondary_btn())
+        self.head = ctk.CTkFrame(self, fg_color="transparent")
+        self.head.grid(row=0, column=0, sticky="ew")
+        self.head.grid_columnconfigure(0, weight=1)
+
+        self.label = ctk.CTkLabel(self.head, text=field_label, anchor="w",
+                                  justify="left", text_color=theme.TEXT_PRIMARY)
+        self.label.grid(row=0, column=0, sticky="ew")
+        bind_wraplength(self.label, self.head, pad=8)
+        if tooltip:
+            attach(self.label, tooltip)
+
+        self.gen_btn = ctk.CTkButton(
+            self.head, text="Generate", width=84, height=28,
+            command=self._toggle_prompt, **theme.secondary_btn())
         self.gen_btn.grid(row=0, column=1, sticky="e", padx=(8, 0))
         attach(self.gen_btn, "Generate AI text for this field (T1/T2/T3 or "
                             "Orchestrated).")
+
+        self.bind("<Configure>", self._reflow_head, add="+")
 
         self.widget.grid(row=1, column=0, sticky="ew", pady=(2, 0))
 
@@ -152,20 +162,41 @@ class FieldGenerateBlock(ctk.CTkFrame):
 
         mode_row = ctk.CTkFrame(self.prompt_frame, fg_color="transparent")
         mode_row.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 8))
-        ctk.CTkLabel(mode_row, text="Mode", text_color=theme.TEXT_MUTED).pack(
-            side="left", padx=(0, 8))
-        self.mode_menu = ctk.CTkOptionMenu(mode_row, values=list(_MODES), width=160)
+        mode_row.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(mode_row, text="Mode", text_color=theme.TEXT_MUTED).grid(
+            row=0, column=0, sticky="w", padx=(0, 8))
+        self.mode_menu = ctk.CTkOptionMenu(mode_row, values=list(_MODES), width=140)
         self.mode_menu.set(_MODES[0])
-        self.mode_menu.pack(side="left", padx=(0, 8))
-        self.run_btn = ctk.CTkButton(mode_row, text="Run", width=70,
+        self.mode_menu.grid(row=0, column=1, sticky="ew", padx=(0, 8))
+        btn_row = ctk.CTkFrame(mode_row, fg_color="transparent")
+        btn_row.grid(row=0, column=2, sticky="e")
+        self.run_btn = ctk.CTkButton(btn_row, text="Run", width=64,
                                      command=self._run, **theme.primary_btn())
-        self.run_btn.pack(side="left", padx=4)
-        self.cancel_btn = ctk.CTkButton(mode_row, text="Cancel", width=70,
+        self.run_btn.pack(side="left", padx=2)
+        self.cancel_btn = ctk.CTkButton(btn_row, text="Cancel", width=64,
                                         command=self.collapse,
                                         **theme.secondary_btn())
-        self.cancel_btn.pack(side="left", padx=4)
+        self.cancel_btn.pack(side="left", padx=2)
 
         self.after(80, self._poll)
+        self.after_idle(self._reflow_head)
+
+    def _reflow_head(self, event=None):
+        w = self.winfo_width()
+        if w < 2:
+            return
+        stack = w < _HEAD_STACK_BELOW
+        if stack == self._head_stacked:
+            return
+        self._head_stacked = stack
+        if stack:
+            self.head.grid_columnconfigure(0, weight=1)
+            self.label.grid(row=0, column=0, columnspan=2, sticky="ew")
+            self.gen_btn.grid(row=1, column=0, columnspan=2, sticky="e",
+                              padx=0, pady=(4, 0))
+        else:
+            self.label.grid(row=0, column=0, columnspan=1, sticky="ew")
+            self.gen_btn.grid(row=0, column=1, sticky="e", padx=(8, 0), pady=0)
 
     def _toggle_prompt(self):
         if self._expanded:
@@ -278,9 +309,9 @@ class FieldGenerateBlock(ctk.CTkFrame):
 
 def attach_field_generate(parent, app, field_label, multiline=True, height=100,
                           min_height=64, max_height=400, resizable=True,
-                          context_fn=None, registry=None):
+                          context_fn=None, registry=None, tooltip=""):
     """Create a field block with label, widget, and Generate controls."""
     return FieldGenerateBlock(
         parent, app, field_label, multiline=multiline, height=height,
         min_height=min_height, max_height=max_height, resizable=resizable,
-        context_fn=context_fn, registry=registry)
+        context_fn=context_fn, registry=registry, tooltip=tooltip)

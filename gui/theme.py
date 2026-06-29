@@ -131,4 +131,20 @@ def style_segmented_button(segmented, selected_text=None, unselected_text=None):
 
 def style_tabview(tabview, selected_text=None, unselected_text=None):
     """Readable tab labels: light text inactive, black text on lime active tab."""
-    style_segmented_button(tabview._segmented_button, selected_text, unselected_text)
+    sb = tabview._segmented_button
+    style_segmented_button(sb, selected_text, unselected_text)
+    if not getattr(tabview, "_radix_tab_hook", False):
+        prev_cmd = sb._command
+
+        def _on_tab(value):
+            if callable(prev_cmd):
+                prev_cmd(value)
+            style_segmented_button(sb, selected_text, unselected_text)
+
+        sb.configure(command=_on_tab)
+        tabview._radix_tab_hook = True
+    try:
+        tabview.after_idle(
+            lambda: style_segmented_button(sb, selected_text, unselected_text))
+    except Exception:
+        pass

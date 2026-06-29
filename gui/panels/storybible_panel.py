@@ -22,11 +22,11 @@ _BIBLE_FIELDS = [
     ("premise", "Premise", True),
     ("logline", "Logline", False),
     ("genreTone", "Genre & Tone", False),
-    ("themes", "Themes (comma-separated)", False),
-    ("pointOfView", "Point of View", False),
+    ("themes", "Themes", False),
+    ("pointOfView", "Point of view", False),
     ("tense", "Tense", False),
-    ("worldRules", "World Rules", True),
-    ("styleNotes", "Style Notes", True),
+    ("worldRules", "World rules", True),
+    ("styleNotes", "Style notes", True),
     ("synopsis", "Synopsis", True),
 ]
 
@@ -48,9 +48,9 @@ class StoryBiblePanel(BasePanel):
             self.tabs.add(name)
 
         self._build_bible(self.tabs.tab("Bible"))
-        self.lore_panel = LoreBookPanel(self.tabs.tab("Lorebook"), app)
+        self.lore_panel = LoreBookPanel(self.tabs.tab("Lorebook"), app, embedded=True)
         self._embed(self.tabs.tab("Lorebook"), self.lore_panel)
-        self.world_panel = WorldStatePanel(self.tabs.tab("World State"), app)
+        self.world_panel = WorldStatePanel(self.tabs.tab("World State"), app, embedded=True)
         self._embed(self.tabs.tab("World State"), self.world_panel)
         self._build_outline(self.tabs.tab("Outline"))
         theme.style_tabview(self.tabs)
@@ -105,11 +105,17 @@ class StoryBiblePanel(BasePanel):
                 box_h, min_h, max_h = 120, 80, 420
             else:
                 box_h, min_h, max_h = 42, 32, 140
+            tip = ""
+            if key == "themes":
+                tip = "Comma-separated list of themes"
+            elif key == "synopsis":
+                tip = "High-level story summary"
             block = attach_field_generate(
                 scroll, self.app, label, multiline=multiline,
                 height=box_h, min_height=min_h, max_height=max_h,
                 context_fn=lambda k=key: self._bible_context(k),
                 registry=self._bible_registry,
+                tooltip=tip,
             )
             block.grid(row=row, column=0, sticky="ew", padx=12, pady=(0, 4))
             self.bible_widgets[key] = block.widget

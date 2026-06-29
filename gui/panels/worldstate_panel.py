@@ -14,19 +14,36 @@ _LISTS = [("timeline", "Timeline (one per line)"),
           ("ongoingEvents", "Ongoing events (one per line)"),
           ("facts", "Facts (one per line)")]
 
+_FIELD_TIPS = {
+    "currentDate": "",
+    "currentLocation": "",
+    "scene": "",
+    "timeline": "One timeline beat per line",
+    "factions": "One faction per line",
+    "ongoingEvents": "One event per line",
+    "facts": "One fact per line",
+}
+
 
 class WorldStatePanel(BasePanel):
     title = "World State"
 
-    def __init__(self, master, app):
+    def __init__(self, master, app, embedded=False):
         super().__init__(master, app)
-        self.grid_rowconfigure(1, weight=1)
         self._gen_registry = GenerateRegistry()
         self._dirty = False
-        self.header("World State", "Tracks 'now': timeline beats, factions, events, "
-                                   "and facts. Injected into agents alongside the bible.")
+
+        content_row = 0
+        if not embedded:
+            self.grid_rowconfigure(1, weight=1)
+            self.header("World State", "Tracks 'now': timeline beats, factions, events, "
+                                       "and facts. Injected into agents alongside the bible.")
+            content_row = 1
+        else:
+            self.grid_rowconfigure(0, weight=1)
+
         self.scroll = ctk.CTkScrollableFrame(self, fg_color=theme.BG_CARD)
-        self.scroll.grid(row=1, column=0, sticky="nsew", padx=16, pady=(4, 8))
+        self.scroll.grid(row=content_row, column=0, sticky="nsew", padx=8, pady=8)
         self.scroll.grid_columnconfigure(0, weight=1)
         bind_scroll_width(self.scroll)
         self.widgets = {}
@@ -34,28 +51,30 @@ class WorldStatePanel(BasePanel):
         for key, label in _SCALARS:
             block = attach_field_generate(
                 self.scroll, app, label, multiline=False,
-                height=42, min_height=32, max_height=120,
+                height=40, min_height=32, max_height=100,
                 context_fn=self._setting_context,
                 registry=self._gen_registry,
+                tooltip=_FIELD_TIPS.get(key, ""),
             )
-            block.grid(row=row, column=0, sticky="ew", padx=12, pady=(0, 4))
+            block.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4))
             self.widgets[key] = block.widget
             block.widget._textbox.bind("<KeyRelease>", self._mark_dirty, add="+")
             row += 1
         for key, label in _LISTS:
             block = attach_field_generate(
-                self.scroll, app, label, multiline=True, height=110,
-                min_height=80, max_height=360,
+                self.scroll, app, label, multiline=True, height=100,
+                min_height=72, max_height=320,
                 context_fn=self._setting_context,
                 registry=self._gen_registry,
+                tooltip=_FIELD_TIPS.get(key, ""),
             )
-            block.grid(row=row, column=0, sticky="ew", padx=12, pady=(0, 4))
+            block.grid(row=row, column=0, sticky="ew", padx=8, pady=(0, 4))
             self.widgets[key] = block.widget
             block.widget._textbox.bind("<KeyRelease>", self._mark_dirty, add="+")
             row += 1
         self.save_btn = ctk.CTkButton(
             self, text="Save World State", command=self._save, **theme.primary_btn())
-        self.save_btn.grid(row=2, column=0, sticky="e", padx=16, pady=(0, 16))
+        self.save_btn.grid(row=content_row + 1, column=0, sticky="e", padx=12, pady=(0, 12))
         self.on_show()
 
     def _setting_context(self):
