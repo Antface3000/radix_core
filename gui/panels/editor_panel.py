@@ -110,7 +110,7 @@ class EditorPanel(BasePanel):
                       **theme.secondary_btn()).pack(side="left", padx=2, pady=8)
         ctk.CTkButton(bar, text="Delete", width=66, command=self._delete_chapter,
                       **theme.danger_btn()).pack(side="left", padx=2, pady=8)
-        ctk.CTkButton(bar, text="Save", width=60, command=self._save_now,
+        ctk.CTkButton(bar, text="Save", width=60, command=lambda: self._save_now(show_toast=True),
                       **theme.secondary_btn()).pack(side="left", padx=2, pady=8)
 
         # Find cluster (right side).
@@ -562,7 +562,7 @@ class EditorPanel(BasePanel):
             self.after_cancel(self._save_handle)
         self._save_handle = self.after(900, self._save_now)
 
-    def _save_now(self):
+    def _save_now(self, show_toast=False):
         if self._save_handle:
             self.after_cancel(self._save_handle)
             self._save_handle = None
@@ -573,6 +573,8 @@ class EditorPanel(BasePanel):
             chapters.write(self._paths()["chapters"], self.current_chapter_id,
                            content)
             self._persist_drafts()
+            if show_toast:
+                self.app.saved("Chapter saved.")
         except ValueError:
             pass
 
@@ -1022,7 +1024,7 @@ class EditorPanel(BasePanel):
             cfg = projects.read_json_safe(self._paths()["config"], {})
             cfg["authorNote"] = box.get("1.0", "end-1c").strip()
             projects.write_json(self._paths()["config"], cfg)
-            self.app.status("Author's Note saved.")
+            self.app.saved("Author's Note saved.")
             win.destroy()
         ctk.CTkButton(win, text="Save", command=save, **theme.primary_btn()
                       ).pack(side="right", padx=12, pady=8)
@@ -1095,7 +1097,7 @@ class EditorPanel(BasePanel):
                 self.image_preview.image = ctk_img
             except Exception:
                 pass
-        self.app.status(f"Saved render: {path}")
+        self.app.saved(f"Saved render: {path}")
 
     def _listen(self):
         text = self.get_selection() or self.get_text_before_cursor()[-500:]

@@ -131,14 +131,14 @@ class SettingsPanel(BasePanel):
                 self.s.set_agent_field(scope, key, "max_tokens", int(m), pid)
             except ValueError:
                 pass
-        self.app.status(f"Saved agent '{key}' ({scope}).")
+        self.app.saved(f"Saved agent '{key}' ({scope}).")
         self.app.refresh_agents()
 
     def _reset_agent(self, key):
         self.s.reset_agent(self.app.engine.project_id, key)
         self._reload_agents()
         self.app.refresh_agents()
-        self.app.status(f"Reset '{key}' to global default.")
+        self.app.saved(f"Reset '{key}' to global default.")
 
     def _edit_prompt(self, key, scope, pid):
         resolved = self.s.persona(self.app.engine.project_id, key)
@@ -154,7 +154,7 @@ class SettingsPanel(BasePanel):
             self.s.set_agent_field(scope, key, "system_prompt",
                                    box.get("1.0", "end").strip(), pid)
             self.app.refresh_agents()
-            self.app.status(f"Saved system prompt for '{key}'.")
+            self.app.saved(f"Saved system prompt for '{key}'.")
             win.destroy()
         ctk.CTkButton(win, text="Save Prompt", command=save).pack(pady=(0, 12))
 
@@ -332,7 +332,7 @@ class SettingsPanel(BasePanel):
                    save=False)
         self.s.set("editor.lore_scan_interval_ms",
                    to_int(self.ed_scan_interval, 3000))
-        self.app.status("Editor settings saved.")
+        self.app.saved("Editor settings saved.")
 
     # ----------------------- Models ----------------------------------------
     def _build_models(self, tab):
@@ -382,7 +382,7 @@ class SettingsPanel(BasePanel):
                 pass
             models[tier] = entry
         self.s.set("models", models)
-        self.app.status("Model registry saved.")
+        self.app.saved("Model registry saved.")
 
     # ----------------------- Orchestration ---------------------------------
     def _build_orchestration(self, tab):
@@ -440,7 +440,7 @@ class SettingsPanel(BasePanel):
         self.s.set("context.memory_recent_turns", to_int(self.orch["memory_recent_turns"], 4))
         self.app.engine.context_inject = bool(self.orch_inject.get())
         self.app.engine.context_auto_capture = bool(self.orch_capture.get())
-        self.app.status("Orchestration settings saved.")
+        self.app.saved("Orchestration settings saved.")
 
     # ----------------------- Services --------------------------------------
     def _build_services(self, tab):
@@ -493,7 +493,7 @@ class SettingsPanel(BasePanel):
         self.s.set("services.tts_engine", self.tts_engine.get())
         if hasattr(self.app, "restart_heartbeat"):
             self.app.restart_heartbeat()
-        self.app.status("Service settings saved.")
+        self.app.saved("Service settings saved.")
 
     def _test_services(self):
         self.health_lbl.configure(text="Health: testing...")
@@ -543,7 +543,7 @@ class SettingsPanel(BasePanel):
                 pass
         self.s.set("image.style_prefix", self.img["style_prefix"].get().strip(), save=False)
         self.s.set("image.seed_behavior", self.seed_behavior.get())
-        self.app.status("Image defaults saved.")
+        self.app.saved("Image defaults saved.")
 
     # ----------------------- Appearance ------------------------------------
     def _build_appearance(self, tab):
@@ -565,7 +565,7 @@ class SettingsPanel(BasePanel):
         self.s.set("appearance_mode", self.mode.get(), save=False)
         self.s.set("color_theme", self.theme_opt.get())
         ctk.set_appearance_mode(self.mode.get())
-        self.app.status("Appearance saved (theme applies next launch).")
+        self.app.saved("Appearance saved (theme applies next launch).")
 
     # ----------------------- helper ----------------------------------------
     def _labeled_entry(self, parent, label, value):

@@ -274,7 +274,7 @@ class LoreBookPanel(BasePanel):
         self.current_id = entry["id"]
         self._reload_list()
         self._clear_dirty()
-        self.app.status(f"Saved lore entry '{entry['name']}'.")
+        self.app.saved(f"Saved lore entry '{entry['name']}'.")
         if hasattr(self.app, "refresh_setting_previews"):
             self.app.refresh_setting_previews()
 

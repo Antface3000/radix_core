@@ -26,6 +26,7 @@ import customtkinter as ctk
 
 import config
 from gui import theme
+from gui.toast import ToastOverlay
 from gui.tooltip import attach
 from gui.panels.agents_panel import AgentsPanel
 from gui.panels.projects_panel import ProjectsPanel
@@ -100,6 +101,7 @@ class RadixApp(ctk.CTk):
         self._build_splitter()
         self._build_editor()
         self._build_statusbar()
+        self._toast = ToastOverlay(self)
 
         # Collapse the marquee's secondary controls into a "More" drawer when the
         # window is too narrow to show them without clipping.
@@ -767,6 +769,15 @@ class RadixApp(ctk.CTk):
     # ======================= status / health ===============================
     def status(self, text):
         self.status_lbl.configure(text=text)
+
+    def toast(self, message, kind="success", duration_ms=2600):
+        """Show a brief on-screen toast (also updates the status bar)."""
+        self.status(message)
+        self._toast.show(message, kind=kind, duration_ms=duration_ms)
+
+    def saved(self, message):
+        """Save confirmation: status bar + success toast."""
+        self.toast(message, kind="success")
 
     def _startup_services(self):
         """Background: auto-launch AllTalk if needed; notify about ComfyUI.

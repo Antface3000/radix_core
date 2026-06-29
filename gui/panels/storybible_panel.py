@@ -156,7 +156,7 @@ class StoryBiblePanel(BasePanel):
             patch[key] = val
         story_bible.update(self._paths()["bible"], patch)
         self._clear_bible_dirty()
-        self.app.status("Story Bible saved.")
+        self.app.saved("Story Bible saved.")
         self.app.refresh_setting_previews()
 
     def flush_if_dirty(self):
@@ -243,7 +243,7 @@ class StoryBiblePanel(BasePanel):
             "summary": self.outline_synopsis.get("1.0", "end").strip(),
             "beats": beats,
         })
-        self.app.status("Outline saved.")
+        self.app.saved("Outline saved.")
 
     # ----------------------- lifecycle -------------------------------------
     def on_show(self):

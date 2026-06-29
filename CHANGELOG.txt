@@ -10,6 +10,14 @@ Format loosely based on Keep a Changelog. Versioning follows Semantic Versioning
 ============
 
 
+[0.2.2] - 2026-06-28
+====================
+
+Added
+-----
+- Save confirmation toasts: a lime-bordered message appears above the status bar
+  when Save succeeds (Story Bible, Lorebook, World State, Editor, Settings, etc.).
+
 [0.2.1] - 2026-06-28
 ====================
 

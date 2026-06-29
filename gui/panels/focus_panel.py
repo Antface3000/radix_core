@@ -55,7 +55,7 @@ class FocusPanel(BasePanel):
         cfg = projects.read_json_safe(self._paths()["config"], {})
         cfg["parkingLot"] = self.parking_box.get("1.0", "end-1c")
         projects.write_json(self._paths()["config"], cfg)
-        self.app.status("Parking lot saved.")
+        self.app.saved("Parking lot saved.")
 
     # ----------------------- Quick Add -------------------------------------
     def _build_quickadd(self, tab):

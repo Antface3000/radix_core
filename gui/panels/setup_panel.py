@@ -146,7 +146,7 @@ class SetupPanel(BasePanel):
         self.app.settings.save()
         if hasattr(self.app, "restart_heartbeat"):
             self.app.restart_heartbeat()
-        self.app.status("Service paths saved.")
+        self.app.saved("Service paths saved.")
 
     def _test(self):
         self._save()

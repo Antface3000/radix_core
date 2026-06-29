@@ -120,7 +120,7 @@ class WorldStatePanel(BasePanel):
             patch[key] = lines
         world_state.write(self.app.engine.paths["world_state"], patch)
         self._clear_dirty()
-        self.app.status("World State saved.")
+        self.app.saved("World State saved.")
         if hasattr(self.app, "refresh_worldbar"):
             self.app.refresh_worldbar()
         if hasattr(self.app, "refresh_setting_previews"):
