@@ -4,10 +4,11 @@ Run from anywhere:  python run.py
 
 On the first run this bootstraps a local virtual environment in ``.venv`` and
 installs everything from ``requirements.txt``, then relaunches itself inside
-that environment. Every later run sees the venv already exists and starts the
-app immediately. You never have to create or activate a venv by hand.
+that environment. Later runs skip pip when ``.venv/.deps-installed`` matches
+the current requirements file (content hash).
 """
 
+import hashlib
 import os
 import subprocess
 import sys
@@ -17,6 +18,14 @@ PROJECT_DIR = Path(__file__).resolve().parent
 VENV_DIR = PROJECT_DIR / ".venv"
 REQUIREMENTS = PROJECT_DIR / "requirements.txt"
 DEPS_STAMP = VENV_DIR / ".deps-installed"
+
+# Core imports used to detect a usable venv without running pip every launch.
+# llama_cpp is optional until the Local LLM pack is installed.
+_IMPORT_PROBE = (
+    "import importlib.util as u\n"
+    "mods = ('PySide6', 'PIL', 'requests', 'websocket')\n"
+    "raise SystemExit(0 if all(u.find_spec(m) for m in mods) else 1)\n"
+)
 
 
 def _venv_python() -> Path:
@@ -36,25 +45,80 @@ def _in_project_venv() -> bool:
         return False
 
 
+def _requirements_fingerprint() -> str:
+    if not REQUIREMENTS.exists():
+        return ""
+    return hashlib.sha256(REQUIREMENTS.read_bytes()).hexdigest()
+
+
+def _read_stamp() -> str:
+    try:
+        return DEPS_STAMP.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _write_stamp() -> None:
+    fp = _requirements_fingerprint()
+    if fp:
+        DEPS_STAMP.parent.mkdir(parents=True, exist_ok=True)
+        DEPS_STAMP.write_text(fp, encoding="utf-8")
+
+
 def _dependencies_stale() -> bool:
-    """Whether deps need (re)installing: never installed, or requirements changed."""
-    if not DEPS_STAMP.exists():
-        return True
-    if REQUIREMENTS.exists():
-        return DEPS_STAMP.stat().st_mtime < REQUIREMENTS.stat().st_mtime
-    return False
+    """True when requirements.txt changed since last successful install."""
+    fp = _requirements_fingerprint()
+    if not fp:
+        return False
+    return _read_stamp() != fp
+
+
+def _imports_ok(python: Path) -> bool:
+    try:
+        result = subprocess.run(
+            [str(python), "-c", _IMPORT_PROBE],
+            capture_output=True,
+            timeout=45,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
+def _pip_install(python: Path) -> None:
+    print("[setup] Installing dependencies (first run can take a few minutes) ...",
+          flush=True)
+    script = PROJECT_DIR / "scripts" / "bootstrap_deps.py"
+    try:
+        subprocess.check_call([str(python), str(script), str(python)])
+    except subprocess.CalledProcessError:
+        sys.exit(
+            "[setup] Studio packages failed to install. See INSTALL.txt."
+        )
+    _write_stamp()
+    print("[setup] Dependencies OK.", flush=True)
+
+
+def _ensure_deps_current(python: Path) -> None:
+    """Install only when imports fail or requirements.txt changed."""
+    if not REQUIREMENTS.exists():
+        return
+    if _imports_ok(python) and not _dependencies_stale():
+        if not DEPS_STAMP.exists():
+            _write_stamp()
+        return
+    _pip_install(python)
 
 
 def _ensure_venv() -> None:
     """Create the venv + install deps if needed, then re-exec inside it.
 
-    If we're already running inside ``.venv`` this is a no-op, so day-to-day
-    launches pay no setup cost.
+    If we're already running inside ``.venv`` this only verifies the stamp.
     """
     if _in_project_venv():
+        _ensure_deps_current(Path(sys.executable))
         return
 
-    # Guard against an impossible relaunch loop (e.g. a broken venv).
     if os.environ.get("RADIX_BOOTSTRAPPED") == "1":
         return
 
@@ -70,24 +134,8 @@ def _ensure_venv() -> None:
                 "Make sure Python 3.10+ is installed and on PATH."
             )
 
-    if _dependencies_stale() and REQUIREMENTS.exists():
-        print(
-            "[setup] Installing dependencies (first run can take a few minutes) ...",
-            flush=True,
-        )
-        try:
-            subprocess.check_call([str(venv_py), "-m", "pip", "install", "--upgrade", "pip"])
-            subprocess.check_call(
-                [str(venv_py), "-m", "pip", "install", "-r", str(REQUIREMENTS)]
-            )
-        except subprocess.CalledProcessError:
-            sys.exit(
-                "[setup] A dependency failed to install (often llama-cpp-python "
-                "needing a prebuilt wheel). See INSTALL.txt, 'GPU acceleration'."
-            )
-        DEPS_STAMP.write_text("ok", encoding="utf-8")
+    _ensure_deps_current(venv_py)
 
-    # Hand off to the venv interpreter and exit with its return code.
     env = {**os.environ, "RADIX_BOOTSTRAPPED": "1"}
     result = subprocess.run(
         [str(venv_py), str(PROJECT_DIR / "run.py"), *sys.argv[1:]], env=env
@@ -97,17 +145,18 @@ def _ensure_venv() -> None:
 
 def main():
     sys.path.insert(0, str(PROJECT_DIR))
-    from gui.main import RadixApp  # noqa: E402  (imported after venv bootstrap)
+    from src.logutil import setup_logging
+    setup_logging(verbose=("--verbose" in sys.argv or "-v" in sys.argv))
+    from ui_qt.app import main as qt_main  # noqa: E402
 
-    app = RadixApp()
-    app.mainloop()
+    sys.exit(qt_main())
 
 
 if __name__ == "__main__":
     _ensure_venv()
-    # Used by the launcher .bat to build the venv without opening the GUI, so it
-    # can then run the pre-launch service script with the venv's Python.
     if "--bootstrap-only" in sys.argv:
+        if _in_project_venv():
+            _ensure_deps_current(Path(sys.executable))
         print("[setup] Environment ready.")
         sys.exit(0)
     main()

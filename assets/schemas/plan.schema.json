@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://radix-core.local/schemas/plan.json",
+  "title": "Radix Plan",
+  "type": "object",
+  "required": ["version", "title", "updatedAt", "tasks", "meta"],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "tasks": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/task" }
+    },
+    "meta": {
+      "type": "object",
+      "required": ["lastEventId", "paused"],
+      "properties": {
+        "lastEventId": { "type": ["string", "null"] },
+        "paused": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "task": {
+      "type": "object",
+      "required": ["id", "title", "type", "status", "priority", "dependsOn", "instruction"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^task-[a-z0-9-]+$" },
+        "title": { "type": "string" },
+        "type": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "in_progress", "blocked", "done", "cancelled"]
+        },
+        "priority": { "type": "integer" },
+        "assignee": { "type": ["string", "null"] },
+        "dependsOn": { "type": "array", "items": { "type": "string" } },
+        "instruction": { "type": "string" },
+        "resultRef": { "type": ["string", "null"] },
+        "createdAt": { "type": "string" },
+        "completedAt": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

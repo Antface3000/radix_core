@@ -13,7 +13,10 @@ blocks an agent emits and filing them as lore.json entries.
 
 import re
 
-from src import story_bible, world_state, lore
+from src import lore, lore_capture_guard, lore_capture_parse, lore_types, story_bible, world_state
+from src.logutil import get_logger
+
+log = get_logger("capture")
 
 # Shared bible field order (single source of truth for agent + editor context).
 BIBLE_FIELD_ORDER = (
@@ -32,10 +35,17 @@ BIBLE_FIELD_ORDER = (
 CAPTURE_MARKERS = {
     "CHARACTER": "character",
     "NPC": "character",
+    "CREATURE": "character",
+    "PLACE": "world",
     "WORLD": "world",
-    "CREATURE": "world",
+    "THING": "world",
+    "ITEM": "world",
+    "OBJECT": "world",
+    "FACTION": "world",
+    "EVENT": "world",
     "LORE": "world",
     "QUEST": "world",
+    "SPECIES": "character",
 }
 GENERIC_MARKER = "REMEMBER"
 
@@ -192,9 +202,14 @@ def assemble(paths, max_chars=6000, exclude_bible_keys=None):
     if canon:
         parts.append("\n--- KEY LORE ---")
         for e in canon[:20]:
-            body = (e.get("appearance") or e.get("notes")
-                    or e.get("history") or "").strip()
-            kind = "Character" if e.get("type") == "character" else "World"
+            et = e.get("entryType") or (
+                "character" if e.get("type") == "character" else "place")
+            kind = lore_types.ENTRY_TYPE_LABELS.get(et, et.title())
+            body_parts = [
+                e.get("notes"), e.get("appearance"), e.get("history"),
+                e.get("goals"), e.get("powers"), e.get("creatureType"),
+            ]
+            body = next((p.strip() for p in body_parts if p and str(p).strip()), "")
             line = f"- [{kind}] {e.get('name')}"
             if body:
                 line += f": {body}"
@@ -244,7 +259,7 @@ def _normalize_capture_text(text):
 
 
 def _paragraph_after_open(text, open_tag):
-    """Fallback: text after unclosed [[TAG]] until blank line or end."""
+    """Fallback: text after unclosed [[TAG]] until next tag or EOF."""
     pattern = re.compile(rf"\[\[{re.escape(open_tag)}\]\]\s*", re.IGNORECASE)
     match = pattern.search(text)
     if not match:
@@ -253,9 +268,25 @@ def _paragraph_after_open(text, open_tag):
     close = re.search(rf"\[\[/{re.escape(open_tag)}\]\]", rest, re.IGNORECASE)
     if close:
         return None
-    chunk = rest.split("\n\n", 1)[0].strip()
+    next_tag = re.search(r"\[\[[^\]]+\]\]", rest)
+    if next_tag:
+        chunk = rest[:next_tag.start()].strip()
+    else:
+        chunk = rest.strip()
     chunk = re.sub(r"\*+$", "", chunk).strip()
     return chunk or None
+
+
+def has_capture_markers(text: str) -> bool:
+    """True if raw text contains any canon capture tag."""
+    if not text:
+        return False
+    normalized = _normalize_capture_text(text)
+    if re.search(r"\[\[(?:REMEMBER|CHARACTER|WORLD|BIBLE|WORLDSTATE)", normalized, re.I):
+        return True
+    if re.search(r"\[\[/", normalized):
+        return True
+    return bool(_paragraph_after_open(normalized, GENERIC_MARKER))
 
 
 def _resolve_bible_field(raw_field):
@@ -393,6 +424,8 @@ def merge_capture_summaries(base, extra):
         **(base.get("world_state") or {}),
         **(extra.get("world_state") or {}),
     }
+    if base.get("staged") or extra.get("staged"):
+        out["staged"] = True
     return out
 
 
@@ -417,15 +450,49 @@ def format_capture_summary(summary):
         parts.append(", ".join(ws.keys()))
     if not parts:
         return ""
-    return "Canon updated: " + "; ".join(parts)
+    prefix = ("Canon staged for review: " if summary.get("staged")
+              else "Canon updated: ")
+    return prefix + "; ".join(parts)
+
+
+# ----------------------- capture apply helpers ------------------------------
+# Used by both the direct-write path below and the staged review queue
+# (src/capture_queue.py) so approval reuses the exact same write logic.
+
+def apply_lore_capture(paths, payload, mode="merge", source="agent"):
+    return lore.upsert(paths["lore"], payload, mode=mode, source=source)
+
+
+def apply_bible_capture(paths, field, body, mode="merge", source="agent"):
+    current = story_bible.read(paths["bible"])
+    current = _apply_bible_value(current, field, body, mode, source=source)
+    story_bible.write(paths["bible"], current)
+    return current.get(field)
+
+
+def apply_world_capture(paths, field, body, mode="merge", source="agent"):
+    current = world_state.read(paths["world_state"])
+    current = _apply_world_value(current, field, body, mode, source=source)
+    world_state.write(paths["world_state"], current)
+    return current.get(field)
 
 
 def capture_from_agent(paths, raw_text, default_kind="world", source="agent",
-                       bible_mode="empty"):
-    """Extract tagged blocks and apply to lore, story bible, and world state."""
+                       bible_mode="empty", stage=None):
+    """Extract tagged blocks and apply to lore, story bible, and world state.
+
+    When ``stage`` is a callable ``stage(kind, payload, mode, source)``, parsed
+    captures are handed to it instead of being written (review-queue mode).
+    """
     summary = empty_capture_summary()
+    src = str(source or "").lower()
+    if "parking" in src or src in ("research", "parking lot"):
+        return summary
     if not raw_text or not paths:
         return summary
+    staging = callable(stage)
+    if staging:
+        summary["staged"] = True
 
     mode = bible_mode if bible_mode in ("empty", "append", "merge") else "merge"
     if mode == "replace":
@@ -435,21 +502,30 @@ def capture_from_agent(paths, raw_text, default_kind="world", source="agent",
     lore_path = paths["lore"]
     seen_lore = set()
 
-    def _file_lore(kind, block, explicit_name=None):
+    def _file_lore(tag, block, explicit_name=None):
         block = (block or "").strip()
-        if not block:
+        if not lore_capture_guard.is_valid_capture_body(block):
+            log.debug("Rejected lore capture (%s): invalid body", tag)
             return
-        name = _name_from_block(block, explicit_name)
-        dedupe = (kind, name.lower())
+        name = lore_capture_guard.derive_capture_name(block, explicit_name)
+        if not name:
+            log.debug("Rejected lore capture (%s): invalid name from %r", tag, block[:80])
+            return
+        dedupe = (tag, name.lower())
         if dedupe in seen_lore:
             return
         seen_lore.add(dedupe)
-        entry = lore.upsert(lore_path, {
-            "type": kind,
-            "name": name,
-            "notes": block,
-            "keywords": [name],
-        }, mode=mode, source=source)
+        storage, entry_type = lore_types.CAPTURE_TAG_ENTRY.get(
+            tag, ("world", "concept"))
+        if tag == "SPECIES":
+            entry_type = "creature"
+        payload = lore_capture_parse.build_capture_entry(
+            block, entry_type, name, storage)
+        if staging:
+            stage("lore", payload, mode, source)
+            summary["lore"].append({**payload, "staged": True})
+            return
+        entry = lore.upsert(lore_path, payload, mode=mode, source=source)
         summary["lore"].append(entry)
 
     for tag, kind in CAPTURE_MARKERS.items():
@@ -458,56 +534,74 @@ def capture_from_agent(paths, raw_text, default_kind="world", source="agent",
             matched = True
             explicit = match.group(1)
             block = match.group(2)
-            _file_lore(kind, block, explicit)
-        if not matched:
+            _file_lore(tag, block, explicit)
+        # Only accept unclosed typed tags when content passes validation (no REMEMBER).
+        if not matched and tag != GENERIC_MARKER:
             unclosed = _paragraph_after_open(text, tag)
             if unclosed:
-                _file_lore(kind, unclosed)
+                _file_lore(tag, unclosed)
 
     if default_kind:
-        matched = False
         for match in _GENERIC_RE.finditer(text):
-            matched = True
-            _file_lore(default_kind, match.group(1))
-        if not matched:
-            unclosed = _paragraph_after_open(text, GENERIC_MARKER)
-            if unclosed:
-                _file_lore(default_kind, unclosed)
+            _file_lore("LORE", match.group(1))
+        # Do not capture unclosed [[REMEMBER]] — models often mention the tag in meta talk.
 
     bible_patch = {}
-    bible_current = story_bible.read(paths["bible"])
-    for match in _BIBLE_RE.finditer(text):
-        field = _resolve_bible_field(match.group("field"))
-        if field:
-            bible_current = _apply_bible_value(
-                bible_current, field, match.group("body"), mode, source=source)
-            bible_patch[field] = bible_current.get(field)
-    for match in _BIBLE_SHORT_RE.finditer(text):
-        field = _resolve_bible_field(match.group("field"))
-        if field:
-            bible_current = _apply_bible_value(
-                bible_current, field, match.group("body"), mode, source=source)
-            bible_patch[field] = bible_current.get(field)
+    if staging:
+        for regex in (_BIBLE_RE, _BIBLE_SHORT_RE):
+            for match in regex.finditer(text):
+                field = _resolve_bible_field(match.group("field"))
+                if field:
+                    stage("bible",
+                          {"field": field, "body": match.group("body").strip()},
+                          mode, source)
+                    bible_patch[field] = match.group("body").strip()
+    else:
+        bible_current = story_bible.read(paths["bible"])
+        for match in _BIBLE_RE.finditer(text):
+            field = _resolve_bible_field(match.group("field"))
+            if field:
+                bible_current = _apply_bible_value(
+                    bible_current, field, match.group("body"), mode, source=source)
+                bible_patch[field] = bible_current.get(field)
+        for match in _BIBLE_SHORT_RE.finditer(text):
+            field = _resolve_bible_field(match.group("field"))
+            if field:
+                bible_current = _apply_bible_value(
+                    bible_current, field, match.group("body"), mode, source=source)
+                bible_patch[field] = bible_current.get(field)
+        if bible_patch:
+            story_bible.write(paths["bible"], bible_current)
     if bible_patch:
-        story_bible.write(paths["bible"], bible_current)
         summary["bible"] = bible_patch
 
     ws_patch = {}
-    ws_current = world_state.read(paths["world_state"])
-    for match in _WORLDSTATE_RE.finditer(text):
-        field = _resolve_world_field(match.group("field"))
-        if field:
-            ws_current = _apply_world_value(
-                ws_current, field, match.group("body"), mode, source=source)
-            ws_patch[field] = ws_current.get(field)
-    for match in _WORLDSTATE_SHORT_RE.finditer(text):
-        field = _resolve_world_field(match.group("field"))
-        if field:
-            ws_current = _apply_world_value(
-                ws_current, field, match.group("body"), mode, source=source)
-            ws_patch[field] = ws_current.get(field)
+    if staging:
+        for regex in (_WORLDSTATE_RE, _WORLDSTATE_SHORT_RE):
+            for match in regex.finditer(text):
+                field = _resolve_world_field(match.group("field"))
+                if field:
+                    stage("world_state",
+                          {"field": field, "body": match.group("body").strip()},
+                          mode, source)
+                    ws_patch[field] = match.group("body").strip()
+    else:
+        ws_current = world_state.read(paths["world_state"])
+        for match in _WORLDSTATE_RE.finditer(text):
+            field = _resolve_world_field(match.group("field"))
+            if field:
+                ws_current = _apply_world_value(
+                    ws_current, field, match.group("body"), mode, source=source)
+                ws_patch[field] = ws_current.get(field)
+        for match in _WORLDSTATE_SHORT_RE.finditer(text):
+            field = _resolve_world_field(match.group("field"))
+            if field:
+                ws_current = _apply_world_value(
+                    ws_current, field, match.group("body"), mode, source=source)
+                ws_patch[field] = ws_current.get(field)
+        if ws_patch:
+            world_state.write(paths["world_state"], ws_current)
     if ws_patch:
-        world_state.write(paths["world_state"], ws_current)
         summary["world_state"] = ws_patch
 
     return summary

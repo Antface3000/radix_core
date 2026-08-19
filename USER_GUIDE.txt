@@ -1,211 +1,159 @@
 RADIX CORE - USER GUIDE
 =======================
 
-Radix Core is a local-only, editor-first creative writing suite. A persistent
-manuscript editor sits at the center, surrounded by a team of local LLM agents,
-a consolidated Story Bible, image generation, voice, and writing-flow extras.
-Everything runs on your machine - no cloud APIs.
+Radix Core is a local novelist studio. You can write, organize chapters, keep
+a Story Bible and Lorebook, compile a manuscript, and spellcheck with no AI
+at all. Optional Add Ons packs unlock local LLM writing, image generation, and
+speech. Everything runs on your machine — no cloud APIs.
 
-This guide explains every part of the interface and how to use it. For setup and
-installation, see INSTALL.txt (Help -> Installation). Model download URLs are
-in section 13 below and spelled out fully in INSTALL.txt sections 7, 9, and 10.
-
-NOTE: New here? Most controls have a hover tooltip explaining what they do, and
-the ? button in the top bar reopens this guide in-app at any time.
+This guide explains the Qt interface. For installation see INSTALL.txt (also
+under Help). Hover any control for a tooltip.
 
 
 1. OVERVIEW
 ===========
 
-- Editor-first: you write in the center; the AI assists from a bar below your
-  manuscript, acting on what you select.
-- Genre-agnostic agents: the world/setting comes from each project's Story
-  Bible, Lorebook, and World State (injected at runtime), not from hardcoded
-  prompts. The same roster adapts to cyberpunk, high fantasy, or anything else.
-- Single-slot models: only one model loads at a time so an about 8B model fits
-  on an 8GB GPU. Switching agent "tiers" swaps the resident model.
-- Mock mode: with no models installed, agents return labeled [MOCK ...] replies
-  so you can explore the whole interface before downloading anything.
+- Studio first: manuscript, binder, Story Bible, lore, world state, compile,
+  import, snapshots, and project search ship in the default install.
+- Three packs (Add Ons, all off by default): Local LLM, Image, Audio.
+  AI chrome (Team, Write/Chat dock, Image Gen, Voice, MOCK MODE) stays hidden
+  until the matching pack is enabled. Download models/voices only after enable.
+- Genre-agnostic: setting comes from each project's Story Bible, Lorebook, and
+  World State, not from hardcoded world prompts.
+- Single-slot models: one GGUF at a time so an ~8B model fits on 8GB VRAM.
+- Tension Reader: chemistry/tension critique. Internal key horny_critic is
+  legacy only; you will not see that word in the UI.
 
 
-2. INTERFACE TOUR
-=================
+2. INTERFACE TOUR (PySide6)
+===========================
 
-The marquee (top bar)
----------------------
-- Project selector + + New: choose or create an isolated project.
-- Setup and Settings: buttons in the top bar (not on the left rail).
-- ? (Help): opens this in-app guide and the installation tutorial.
-- World State readout (right): shows World: plus the current date / location /
-  scene for the project. Click it to jump to Story Bible -> World State to edit.
-- Service health (far right): three dots (ComfyUI / AllTalk / Piper) that go
-  green when connected, refreshed automatically by a background heartbeat.
-  Configure paths in the Setup panel.
-- ... More drawer: on a narrow window, Setup, Settings, Help, world state, and
-  health dots move into a ... More button so nothing gets cut off.
+The manuscript editor is always in the center. Feature panels open as floating
+lightboxes from the left toolbar.
 
-The left tab rail
+The left toolbar
+----------------
+Always: Story Bible, Projects, Focus, Add Ons, Help, Settings.
+With packs: Team (LLM), Image Gen (Image), Voice (Audio).
+
+Click a button to show that panel. Stay open pins a lightbox. Close or toggle
+the button again to dismiss. Settings and Help stay as lightboxes.
+
+The editor layout
 -----------------
-A vertical strip of buttons that open feature panels in the side dock:
-Story Bible, Agents, Projects, Image Gen, Voice, Focus, Music.
-Setup, Help, and Settings are in the top bar only (or via ... More).
-Click a button to open its panel; click again to close it.
+Binder (left) is the primary chapter list — drag to reorder. Metadata on the
+current chapter: status (draft/revise/done), POV, location, story date.
+Optional split view: Story Bible, lore list, or another chapter.
+AI Assistant dock (right) appears only with the Local LLM pack.
 
-The side dock and pop-out windows
----------------------------------
-The dock appears between the rail and the editor when you open a panel. Drag the
-thin vertical splitter between the dock and the editor to resize the dock; panel
-contents reflow to fit. The dock header has:
-- Pop out: detaches the panel into its own window - drag it to a second monitor
-  and keep writing in the main window.
-- X: closes the dock.
+The status bar
+--------------
+- Project name (click → Projects).
+- Pack heartbeat dots (enabled packs only): LLM / Image / Audio.
+- MOCK MODE (LLM pack on and no GGUF found). Click → Add Ons.
+- Pending canon chip when agents staged lore for review.
+- World State snippet (click → Story Bible → World State).
+- Session and daily word counts, plus chapter word goal if set.
 
-Popped-out panels stay live and independent. Re-clicking a rail button focuses
-an existing pop-out instead of duplicating it.
-
-The status bar (bottom)
------------------------
-Shows short status messages ("Saved", "Rendering...", etc.).
+Typewriter scrolling and focus mode live in Settings → Editor, off by default.
+They are not toolbar buttons.
 
 
 3. THE EDITOR
 =============
 
-The center pane is a persistent, autosaving manuscript editor.
+The center pane is a persistent, autosaving plain-text manuscript editor.
 
-Chapters
---------
-The chapter bar (top) lets you create, rename, delete, and switch chapters.
-Find search is on the right side of the chapter bar (Enter = next match,
-Shift+Enter = previous). Each chapter is its own file; the editor autosaves
-when idle and when you switch.
+Binder and chapters
+-------------------
+The binder lists every chapter. The toolbar still has New / Rename / Delete
+and a chapter dropdown. Each chapter stores status, POV, location, and story
+date. Files live under data/projects/<id>/chapters/. Autosave after idle typing,
+snapshots every few minutes, and a crash buffer for unsaved text.
 
-Format toolbar
---------------
-Below the chapter bar:
-- Font / Size / Line: typography for the editor (preferences persist).
-- Color swatches (A): color the selected text; the blank swatch clears color.
-- Goal: a word goal for the chapter that drives the footer progress bar.
-  Press Enter to apply.
-- Focus: hides the format toolbar to reduce distraction.
-- Typewriter: keeps the cursor line vertically centered as you type.
+Find and spellcheck
+-------------------
+Find in chapter (Aa / Word / .*). Spellcheck underlines misses; the replace bar
+offers Replace, more suggestions, Ignore, and Add to dictionary. Optional
+as-you-type autocorrect is in Settings → Editor (off by default). A grammar
+checker can be dropped in later as radix_grammar.py on an extra plugin path
+(Add Ons → extra directories) — it is not one of the three packs.
 
-Footer
-------
-- Live word count and progress bar (toward your goal).
-- Active lore chips: as you write, Radix scans recent text and surfaces matching
-  Lorebook entries here. Click a chip to open the Story Bible. Toggle the
-  feature and its scan interval in Settings -> Editor.
+Export and import
+-----------------
+Export ▾ : current chapter, compile txt/md, standard manuscript layout, DOCX,
+EPUB, and a production bible (tables of people/places/factions/creatures) for
+collaborators who do not use Radix. Import Markdown or DOCX as a new chapter.
+Project Search scans chapters, lore, and Story Bible (replace is chapters only).
 
+Snapshots and notes
+-------------------
+Snapshots saves timed copies of the current chapter; restore from the dialog.
+Notes (fix-later) sit beside the chapter in *.notes.json and are never sent to
+Write/Chat unless you check Include notes in AI.
 
-4. EDITOR AI
-============
+Gated actions (packs)
+---------------------
+- Brainstorm / Ask Agent — Local LLM pack.
+- Visualize — Image pack (ComfyUI).
+- Listen — Audio pack (speech).
+- Summarize / Write / Chat / Query-blurb / continuity list — Local LLM pack.
 
-The AI bar sits below the manuscript (above the draft bar when drafts are
-pending). Most actions use your selection (or recent text if nothing is
-selected) plus the optional Direction field for guidance like "introduce the
-rival" or "end on a cliffhanger". On a narrow window the AI bar scrolls
-horizontally so every button stays reachable.
-
-Write (the prose pipeline)
---------------------------
-1. The Ghostwriter (DeepSeek) drafts the next passage from full project context
-   in your established voice.
-2. The configured critics (default: Lore Curator + Prose Critic) review and
-   refine the draft for style and continuity.
-3. Optionally, a full-team pass routes Write through the Manager-led
-   orchestration instead (slower, broader). Enable it in Settings -> Editor.
-
-The result appears in the AI tab of the right dock. Insert at Cursor drops it
-into the manuscript as a draft edit (see below). Re-roll runs it again; Copy
-copies to the clipboard.
-
-Brainstorm
+Split view
 ----------
-Returns idea directions for the current scene without writing prose. Choose
-single (one persona, fast) or team (full orchestration, richer) in Settings ->
-Editor.
+Use Split: Story Bible, Lore, or other chapter to keep research beside the
+manuscript. Layout is local to the session.
 
-Chat
-----
-Opens a project-aware, multi-turn conversation in the dock's Chat tab. It can
-discuss plot, characters, pacing, and consistency using the whole project
-context (Story Bible, Lorebook, World State, Outline, manuscript, Author's
-Note). It talks; it does not write prose into your manuscript.
 
-Visualize
----------
-Turns the selected text into an image via ComfyUI. The mode menu picks Landscape
-(a background) or Portrait (a character). The render appears in the dock's
-Image tab and saves to the project's backgrounds/ or portraits/ folder.
+4. EDITOR AI (Local LLM pack)
+=============================
 
-Listen
-------
-Reads the selected text aloud using the configured TTS engine (Settings ->
-Services).
+The AI Assistant dock appears only when the Local LLM pack is enabled.
 
-Ask Agent
----------
-Pick any single persona from the menu, or Team (orchestrate), and click Ask to
-run it on your selection/direction. Output streams into the AI dock.
+Modes
+-----
+- Write — Prose Writer drafts the next passage; optional critics refine it.
+  Voice lock (when you have accepted pages) matches your diction.
+- Chat — project-aware conversation. Not inserted as manuscript.
+- Query / blurb — named job for query letter, synopsis, or cover blurb. Never
+  mixed into Write.
 
-Author's Note
--------------
-Per-project scene guidance (current goal, tone, what to emphasize) that is
-injected into every Write.
+Retrieval over the full manuscript + lore supplements PREVIOUSLY for long books.
+Continuity list (lore audit issues) appears under the editor; double-click to
+jump to the lore entry.
 
-Writing style (My Style / Alt Style / Neutral Style)
-----------------------------------------------------
-The dropdown next to Direction in the AI bar picks which prose style the Write
-button uses. This is NOT the voice for Listen (that is Settings -> Services ->
-TTS).
-
-- My Style - injects the My Style guide from Settings -> Editor into the
-  Ghostwriter prompt (tone, tense, sentence rhythm, etc.).
-- Alt Style - same, but uses the Alt Style guide (a second voice, e.g. for
-  flashbacks or a different POV).
-- Neutral Style - no style guide; plain prose from context only.
-
-Fill in the style guides in Settings -> Editor before Write will follow them.
-If a guide is empty, My Style and Alt Style behave like Neutral Style.
-
-The AI / Chat / Image dock
---------------------------
-- AI tab: the latest response, with history navigation, Insert, Copy, and
-  Re-roll.
-- Chat tab: the conversation thread and an input box.
-- Image tab: the most recent Visualize/Generate preview.
-
-Draft edits (accept / reject)
------------------------------
-AI insertions are highlighted (underlined, lime-tinted) and pending. The draft
-bar below the AI bar offers:
-- Accept All: keep all pending insertions (clears the highlight).
-- Reject All: remove all pending insertions.
-- Review...: step through each insertion and accept or reject individually.
-
-Pending drafts persist per chapter, so you can come back to them later.
+Ghost text, draft bar, and shortcuts are unchanged: Ctrl+Enter run, Esc stop,
+Ctrl+Shift+A accept, Ctrl+Shift+X reject, Ctrl+Shift+R retry.
 
 
 5. STORY BIBLE
 ==============
 
-Open from the rail. It consolidates four tabs:
+Open from the left toolbar. Tabs:
 
-- Bible: premise, genre, themes, rules, and style. This is the backbone of the
-  SETTING block injected into agents.
-- Lorebook: characters and world entries. Each entry has notes, appearance (used
-  for images), goals, and an optional Image prompt override. Two flags matter:
-  - Always include: always inject this entry into agent prompts.
-  - Pinned: prioritize it (top of the list, kept when context space is tight).
-  Generate Image renders a portrait/image for the entry via ComfyUI.
-- World State: the current date, location, and scene (shown in the marquee as
-  World: ...), plus timeline, factions, ongoing events, and facts.
-- Outline: per-chapter synopsis and beats.
+- Bible: premise, genre, themes, rules, style, POV, tense, synopsis.
+- Lorebook: typed canon entries — People, Creatures, Places, Things, Factions,
+  Events, Concepts. Each type has its own context fields (e.g. creature type,
+  habitat, powers for Creatures; territory, history for Places). Common fields:
+  keywords, aliases, tags, portrait path, notes. Filter the list by type; use New to pick a type.
+  Flags: Pinned and Always include in SETTING.
+- World State: current date, location, scene notes, plus timeline, factions,
+  ongoing events, and facts (one item per line).
+- Outline: global and per-chapter summary and beats.
+
+Save All writes all tabs. Export canon… saves a readable Markdown bundle.
+
+Generate with AI (right-click)
+------------------------------
+Right-click any editable field → Generate with AI → pick T1/T2/T3 or
+Orchestrated team. Enter a prompt; output streams into the field. Stop from
+the same menu while generating. If the model emits [[REMEMBER]] or [[BIBLE:*]]
+markers and auto-capture is on, canon is filed automatically.
+
 
 Save your work: click Save Bible / Save World State / Save on lore entries.
 Unsaved Story Bible edits are auto-saved when you run an agent (if the Story
-Bible panel is open). The Agents panel shows how many setting characters are
+Bible panel is open). The Team panel shows how many setting characters are
 injected and has a Preview button for the full SETTING block.
 
 Each text field on those tabs has a Generate button. Click it, enter a prompt,
@@ -218,47 +166,51 @@ Lorebook and surfaces relevant entries under the editor (and feeds them to the
 AI). Configure it in Settings -> Editor.
 
 
-6. AGENTS AND ORCHESTRATION
-===========================
+6. TEAM AND ORCHESTRATION
+=========================
 
-The Agents panel is a streaming chat bench for working with agents directly.
+The Team panel is the single place for multi-agent work. Three tabs:
 
-- Persona menu: pick a single agent to talk to.
-- Show <think>: reveal the model's hidden reasoning (useful for
-  debugging).
-- Orchestrate: let the Manager plan and route your task across the whole team
-  instead of a single agent.
-- Inject setting: include the Story Bible + pinned lore + world state in each
-  prompt so agents stay consistent with your world. The line below the controls
-  shows the injected character count; Preview opens the full SETTING text.
-  Only lore entries marked Always include or Pinned are sent to agents here
-  (editor Write uses smart lore scoring for the full Lorebook).
+- Specialist — message one enabled specialist with project setting context.
+- Team run — one-shot job: the hidden system planner assigns specialists and
+  runs them in order (no silent rewrite of their output unless you opt in).
+- Project plan — generate a structured task list into plan.json, then run
+  pending tasks one by one.
+
+Controls (all tabs)
+-------------------
+- Persona menu (Specialist tab): pick a single specialist.
+- Show <think>: reveal the model's hidden reasoning (debugging).
+- Inject setting: include Story Bible + pinned lore + world state. The status
+  line shows injected character count; Preview opens the full SETTING text.
+- Insert into manuscript: append the latest output to the editor cursor.
 
 How orchestration works
 -----------------------
-1. Plan: the Manager emits a JSON pipeline of steps (e.g. World Builder ->
-   Creature Developer -> Lore Curator review).
-2. Execute: each agent runs in order, receiving the task plus all prior outputs,
-   so later agents cross-check earlier ones.
-3. Synthesize: the Manager reconciles everything into one result.
+1. Plan: the system planner (architect model, not in the roster picker) emits
+   a JSON task list with one specialist per task.
+2. Execute: each specialist runs with only its scoped instruction (plus setting
+   and explicit dependency outputs when a task depends on another).
+3. Optional summary: enable "Team summary" in Settings → Orchestration if you
+   want a labeled planner merge pass after the run (off by default).
 
 Human-in-the-loop (HITL)
 ------------------------
-Enable in Settings -> Orchestration. The User Liaison asks clarifying questions
-before planning and summarizes progress before synthesis - the app prompts you
-and feeds your answers forward.
+Enable in Settings → Orchestration. The system liaison asks clarifying questions
+before team runs and on ambiguity pre-flight checks.
 
 NOTE: Cross-tier steps reload the model (single-slot), so a mixed pipeline
 pauses between steps. This is expected.
 
-The roster
-----------
-- Tier 1 - Architects (DeepSeek): Lore Curator, Creature Developer, Character
-  Developer, World Builder, Ghostwriter, Prose Critic.
-- Tier 2 - Operators (Qwen3-8B): Manager, User Liaison, Chat Historian, Quest
-  Architect.
-- Tier 3 - Flavor (L3-8B-Stheno): Pessimistic Critic, Optimistic Critic, Horny
-  Critic, Slang-Smith.
+The roster (specialists you can enable)
+---------------------------------------
+- Tier 1 - Architects: Canon Checker, Species Designer, Character Profiler,
+  Setting Designer, Prose Writer, Line Editor, Dialogue Writer.
+- Tier 2 - Operators: Session Summarizer, Plot Designer.
+- Tier 3 - Flavor: Cliché Hunter, Spark Editor, Tension Reader, Dialect Writer.
+
+Orchestration personas (system planner, system liaison) are hidden and use the
+architect model only.
 
 
 7. PROJECTS
@@ -267,7 +219,11 @@ The roster
 The Projects panel creates, switches, renames, and deletes isolated worlds. Each
 project has its own chapters, lore, story bible, world state, outline, memory,
 portraits, backgrounds, and (optionally) agent overrides. Switching projects
-re-points the whole app, including the marquee readout.
+re-points the whole app.
+
+Backup to folder… copies the project directory. Share lore/bible from another
+project… links this book to a series parent so manuscripts stay per-book while
+canon is shared.
 
 On first launch (or when enabled in the startup dialog), a Projects launcher
 opens before the main window so you can continue, open, or create a project.
@@ -276,100 +232,101 @@ opens before the main window so you can continue, open, or create a project.
 8. FOCUS EXTRAS
 ===============
 
-The Focus panel groups three writing-flow helpers:
+Open Focus from the left toolbar (opens as a movable lightbox; check Stay open
+to keep it pinned). Tabs:
 
-- Parking Lot: a free-text scratchpad saved with the project - dump ideas you
-  don't want to lose.
-- Quick Add: bulk-add lore. One entry per line: Name: notes adds a character;
-  prefix with world: (e.g. world: The Undercity: flooded tier) to add a place.
-  Click Add to Lorebook.
-- Pre-Flight: a readiness checklist computed from the project's data (bible
-  filled in, lore present, world state set, chapters started). Re-check re-runs
-  it.
-
-
-9. MUSIC
-========
-
-The Music panel has two tabs:
-
-- Local: open a folder of audio files and play/stop/next/previous. Supported
-  formats depend on your system codecs (WAV/FLAC/OGG are most reliable).
-- Deezer: a placeholder marked work in progress - web streaming isn't wired up
-  yet; use the Local tab today.
+- Quick Add: bulk-add typed lore. One entry per line. Prefix with type:
+  person: / character: / creature: / place: / world: / thing: / faction: /
+  event: / concept: — then Name: notes. Pipe extra fields:
+  creature: Smaug | type: dragon | notes: hoard guardian. Lines starting with #
+  are ignored. Choose default type, Add vs Upsert, then Add to Lorebook.
+- Research (not canon): parking lot scratchpad. Never auto-captured into lore.
+- Canon Audit: rule-based lore report (duplicates, thin entries, keyword clashes,
+  manuscript orphans). Double-click an issue to jump to the lore entry. Preview
+  legacy upgrade runs the same migration as Story Bible → Upgrade legacy….
+- Pre-Flight: readiness checklist (bible, lore, world state, chapters, setting
+  depth, audit summary). Re-check re-runs it.
 
 
-9b. SERVICE SETUP AND SYNC ASSETS
-=================================
+9. ADD ONS (PLUGIN PACKS)
+=========================
 
-Radix Core acts as a hub that drives your separately-running ComfyUI and AllTalk
-processes - it doesn't bundle or alter their environments. The Setup panel
-(top bar -> Setup, or ... More on a narrow window) is where you connect
-everything:
+Open Add Ons on the left. Each pack is a card: Enable, then Install.
 
-- Connect: enter each service's Server URL and Install folder (Browse buttons
-  help), plus Piper's exe/voice. Click Save.
-- Verify: each service shows a green/red dot. Test now probes immediately; the
-  top-bar heartbeat keeps the dots current on an interval.
-- Launch: Launch AllTalk / Launch ComfyUI start a service from the install
-  folder you set (each in its own console window).
-- Sync Assets: Preview shows a dry run, then Sync Assets copies assets bundled
-  with Radix (from radix_core/assets and workflows) into the folders you set.
-  The default workflow is already wired and sent over the API, and custom nodes
-  are best installed via ComfyUI Manager, so the main use is pushing voices into
-  AllTalk. It is copy-only and non-destructive ("Overwrite existing" controls
-  whether matching files are replaced).
+Local LLM
+  1. Install inference engine (prebuilt llama-cpp-python: NVIDIA GPU if
+     nvidia-smi is present, otherwise CPU).
+  2. Download writing models into models/. All three is about 15 GB; Architect
+     only is enough for Write. Progress appears at the bottom of Add Ons.
 
-Auto-launch: Start Radix Core.bat runs scripts/start_services.py before the app
-opens. AllTalk also auto-launches from inside the app if it's down and its
-folder is set; ComfyUI is never auto-started (launch it yourself - Radix notifies
-you when it's not running); Piper needs no launch (it's a per-call CLI). On first
-launch, if a service isn't reachable, Setup opens automatically so you can
-point Radix at your installs. Adjust how often health is checked in Settings ->
-Services -> Heartbeat interval (seconds) (default 30, minimum 5).
+Image
+  ComfyUI is a separate app. Use “How to install ComfyUI”, then Browse to the
+  folder that contains main.py (or Auto-detect), Launch, Sync assets.
+
+Audio
+  Install Piper for offline Listen. AllTalk is optional if you already have it.
+
+Extra plugins: a folder that may contain radix_grammar.py. Not required.
+
+Heartbeat dots on the status bar appear only for enabled packs. Comfy/AllTalk
+are not started at launch unless that pack is on.
+
+
+9b. SERVICE SYNC
+================
+
+Radix drives separately-running ComfyUI and AllTalk. Enable the Image or Audio
+pack first, then use Add Ons to set folders, launch, and sync assets (copy-only).
+
+Auto-launch: Start Radix Core.bat runs scripts/start_services.py. ComfyUI is
+not auto-started. Piper is a per-call CLI. Heartbeat interval is in
+Settings → Services (default 30 seconds).
 
 
 10. SETTINGS CONTROL CENTER
 ===========================
 
-Open from the top bar (Settings). One panel controls the whole unit; changes
+Open Settings from the left toolbar (lightbox). Tabbed control center; changes
 persist to data/global.json / data/agents.json and apply live.
 
-- Agents: per-persona model / temperature / max-tokens / enable + an editable
-  system prompt. The scope switch toggles between the stable Global Default and
-  the Current Project override; Reset reverts a project override to the global
-  default.
-- Editor: the editor AI pipeline - Write (Ghostwriter persona, critics selection,
-  optional full-team pass, tokens/temperature), Brainstorm (mode/persona/tokens),
-  Chat persona, My Style / Alt Style / Neutral Style presets + style guide text,
-  and the lore auto-scan toggle/interval.
-- Models: the model registry - path, n_ctx (context window), and n_gpu_layers
-  (GPU offload; -1 = all) per tier.
-- Orchestration: max steps, final synthesis pass, manager/liaison keys,
-  human-in-the-loop, setting injection + auto-capture, the injection character
-  cap, and memory turns.
-- Services: ComfyUI / AllTalk URLs and install folders, TTS engine/voice, Piper
-  paths, a styles.csv path, and the heartbeat interval - with a Test button and
-  health dots. (Service connection + asset sync also live in the dedicated Setup
-  panel.)
-- Image: workflow file, default size, style prefix, and seed behavior (randomize
-  vs fixed).
-- Appearance: appearance mode and theme (theme applies next launch).
+- General: welcome/startup, update checks, lore audit-on-open, orphan scan.
+- Generation: temperature, max tokens, streaming.
+- Context: setting injection, capture mode, auto-capture, inject char cap,
+  memory turns.
+- Orchestration: max steps, HITL (liaison), optional team summary (off by
+  default), ambiguity check, system planner/liaison keys.
+- Editor: lore autoscan interval, match mode (substring / word boundary / regex
+  keywords), find defaults (case, whole words, regex), Write/Chat pipeline,
+  style guides, team defaults (default specialist, ideas persona).
+- Agents: per-persona overrides (global vs project scope), reset project override.
+- Services: ComfyUI / AllTalk URLs and folders, TTS, Piper, heartbeat interval.
+- Image: workflow, dimensions, style prefix, seed behavior.
+- Appearance: spellcheck, panel scroll/font, lightbox size and open mode (replace
+  vs stack), editor font family, line height, word goal.
+
+Panel lightboxes: toolbar buttons open floating panels; checked buttons show which
+panels are open. Stay open keeps a panel pinned across switches. The editor uses
+the full window width.
 
 
 11. LORE CAPTURE MARKERS
 ========================
 
 Agents persist canon by wrapping it in markers. With Auto-capture on (Settings ->
-Orchestration), tagged blocks update Lorebook, Story Bible, and World State.
+Context), tagged blocks update Lorebook, Story Bible, and World State.
 
 Lorebook markers
 ----------------
 - [[REMEMBER]] ... [[/REMEMBER]] - general fact (type depends on agent).
-- [[CHARACTER:Name]] ... [[/CHARACTER]] - character profile (named preferred).
-- [[NPC]] ... [[/NPC]] - character entry.
-- [[WORLD]] ... [[/WORLD]] - place, faction, or quest.
-- [[CREATURE]] ... [[/CREATURE]] - creature entry.
+- [[CHARACTER:Name]] ... [[/CHARACTER]] - person (named preferred).
+- [[NPC]] ... [[/NPC]] - person entry.
+- [[CREATURE]] ... [[/CREATURE]] - creature (sets creature type fields).
+- [[PLACE]] ... [[/PLACE]] - location.
+- [[WORLD]] ... [[/WORLD]] - place (legacy alias for [[PLACE]]).
+- [[THING]] / [[ITEM]] / [[OBJECT]] ... [[/THING]] - object or artifact.
+- [[FACTION]] ... [[/FACTION]] - group or organization.
+- [[EVENT]] / [[QUEST]] ... [[/EVENT]] - story event or quest beat.
+- [[LORE]] ... [[/LORE]] - abstract concept or rule.
 
 Story Bible markers
 -------------------
@@ -486,7 +443,7 @@ Manual:
 AllTalk (optional TTS)
 ----------------------
 AllTalk is a separate install - Radix talks to it at http://127.0.0.1:7851.
-Voice files come from your AllTalk folder or from assets/voices/ via Setup ->
+Voice files come from your AllTalk folder or from assets/voices/ via Add Ons →
 Sync Assets.
 
 

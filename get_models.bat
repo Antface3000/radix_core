@@ -19,5 +19,6 @@ echo.
 
 ".venv\Scripts\python.exe" scripts\download_models.py
 echo.
-echo Done. You can now start the app with "Start Radix Core.bat".
+echo Done. In the app: Add Ons → enable Local LLM if you have not already.
+echo Or start with "Start Radix Core.bat".
 pause

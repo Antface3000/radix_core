@@ -18,7 +18,7 @@ MODELS_DIR = os.path.join(BASE_DIR, "models")
 DATA_DIR = os.path.join(BASE_DIR, "data")
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 WORKFLOWS_DIR = os.path.join(BASE_DIR, "workflows")
-THEME_PATH = os.path.join(ASSETS_DIR, "theme", "radix_theme.json")
+QSS_PATH = os.path.join(ASSETS_DIR, "theme", "radix.qss")
 USER_GUIDE_PATH = os.path.join(BASE_DIR, "USER_GUIDE.txt")
 INSTALL_PATH = os.path.join(BASE_DIR, "INSTALL.txt")
 CHANGELOG_PATH = os.path.join(BASE_DIR, "CHANGELOG.txt")
@@ -66,6 +66,7 @@ MODEL_REGISTRY = {
 # --- Generation defaults ----------------------------------------------------
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_MAX_TOKENS = 2400
+DEFAULT_REPEAT_PENALTY = 1.15
 STREAMING = True
 
 # Writing style presets for the Write pipeline (not TTS voice).
@@ -90,9 +91,9 @@ def style_preset_from_display(label):
 
 # --- Auto-orchestration -----------------------------------------------------
 ORCHESTRATION_MAX_STEPS = 5
-ORCHESTRATION_SYNTHESIS = True
-ORCHESTRATION_MANAGER_KEY = "manager"
-ORCHESTRATION_LIAISON_KEY = "user_liaison"
+ORCHESTRATION_SYNTHESIS = False
+ORCHESTRATION_MANAGER_KEY = "system_planner"
+ORCHESTRATION_LIAISON_KEY = "system_liaison"
 # Human-in-the-loop: Liaison asks clarifying questions before planning and
 # summarizes for the user before synthesis.
 ORCHESTRATION_HITL = False
@@ -107,6 +108,8 @@ MEMORY_RECENT_TURNS = 4
 CONTEXT_INJECT = True
 CONTEXT_AUTO_CAPTURE = True
 CONTEXT_CAPTURE_BIBLE_MODE = "empty"   # empty | append | merge
+# Stage captured canon for user review instead of writing directly.
+CONTEXT_CAPTURE_REVIEW = True
 CONTEXT_INJECT_MAX_CHARS = 6000
 
 # --- Services (local, self-hosted) ------------------------------------------
@@ -152,10 +155,10 @@ EDITOR_WORD_GOAL = 1000
 PANEL_FONT_FAMILY = "Segoe UI"
 PANEL_FONT_SIZE = 13
 PANEL_AUTO_SCROLL = True
+LIGHTBOX_DEFAULT_WIDTH = 720
+LIGHTBOX_DEFAULT_HEIGHT = 720
 
 # --- UI ---------------------------------------------------------------------
 APP_TITLE = "Radix Core"
 APP_VERSION = _read_version()
 APP_GEOMETRY = "1280x820"
-APPEARANCE_MODE = "dark"        # "dark" | "light" | "system"
-COLOR_THEME = "radix"           # custom theme (THEME_PATH) or a CTk built-in

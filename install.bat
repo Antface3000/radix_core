@@ -55,17 +55,12 @@ if exist ".venv\Scripts\python.exe" (
 )
 set "VENV_PY=.venv\Scripts\python.exe"
 
-REM ---- dependencies ----
-echo [..] Upgrading pip ...
-"%VENV_PY%" -m pip install --upgrade pip
-echo.
-echo [..] Installing dependencies from requirements.txt ...
-"%VENV_PY%" -m pip install -r requirements.txt
+REM ---- dependencies (studio first; llama wheel is best-effort) ----
+echo [..] Installing studio packages, then an LLM wheel if possible ...
+"%VENV_PY%" scripts\bootstrap_deps.py "%VENV_PY%"
 if errorlevel 1 (
     echo.
-    echo [WARN] One or more dependencies failed to install.
-    echo        This is usually llama-cpp-python needing a prebuilt wheel.
-    echo        See INSTALL.txt, section "GPU acceleration", for the CUDA/CPU wheel.
+    echo [ERROR] Studio packages failed to install. See INSTALL.txt.
     echo.
     pause
     exit /b 1
@@ -73,15 +68,11 @@ if errorlevel 1 (
 
 echo.
 echo ============================================================
-echo  Setup complete.
+echo  Writing studio is ready.
 echo.
-echo  Optional next steps:
-echo    * GPU speed-up : install a CUDA wheel (see INSTALL.txt)
-echo    * Models       : run  "%VENV_PY%" scripts\download_models.py
-echo                     or drop .gguf files into  models\
-echo.
-echo  Launch the app:   double-click "Start Radix Core.bat"
-echo  (Until models are added, agents reply in MOCK mode.)
+echo  Double-click "Start Radix Core.bat" to write.
+echo  AI, images, and speech are optional: in the app open Add Ons
+echo  and enable a pack, then use Install on that tab.
 echo ============================================================
 echo.
 set "LAUNCH="

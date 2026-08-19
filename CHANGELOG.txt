@@ -10,6 +10,61 @@ Format loosely based on Keep a Changelog. Versioning follows Semantic Versioning
 ============
 
 
+[1.0.0] - 2026-08-19
+=====================
+
+Added
+-----
+- Novelist studio as the default install: manuscript, binder, Story Bible,
+  Lorebook, World State, spellcheck, compile, and search with no AI until a
+  pack is enabled in Add Ons.
+- Three optional packs (all off by default): Local LLM, Image, Audio (speech).
+  Enable then install from Add Ons cards with in-panel progress.
+- Easy Windows install: install.bat / Start Radix Core.bat run
+  scripts/bootstrap_deps.py. Studio packages always install; llama-cpp-python
+  is a prebuilt CPU or CUDA wheel and is optional.
+- Add Ons installers: inference engine, GGUF download (all or Architect /
+  Operator / Flavor), Piper offline speech, ComfyUI browse / auto-detect /
+  launch / sync assets.
+- Binder with drag-reorder, chapter status/POV/location/story date, split view,
+  timed snapshots, crash recovery, project backup, series-shared canon.
+- Compile: standard manuscript, DOCX, EPUB, production bible. Import Markdown
+  and DOCX. Project-wide search/replace. Fix-later notes (opt-in for AI).
+- LLM-pack tools: retrieval over chapters+lore, continuity list, voice lock,
+  named Query / synopsis / blurb job (never mixed into Write).
+- Spellcheck replace bar (Replace / Ignore / Add to dictionary), optional
+  autocorrect, extra-path grammar hook (radix_grammar.py).
+- AGENTS.md roster export; Tension Reader display name (legacy key horny_critic).
+
+Changed
+-------
+- run.py launches ui_qt.app (PySide6). Default chrome hides Team, Write/Chat,
+  Image Gen, and Voice until the matching pack is on.
+- Start-up skips ComfyUI/AllTalk probes unless those packs are enabled.
+- Typewriter scrolling and focus mode live in Settings → Editor, off by default.
+- INSTALL.txt / USER_GUIDE.txt / README.txt describe the Qt studio and Add Ons
+  install path.
+
+Removed
+-------
+- Entire gui/ CustomTkinter package.
+- Music / soundtrack panel (out of scope).
+
+Migration
+---------
+- Existing data/projects/* folders open without migration. Packs default off in
+  new global.json; enable them in Add Ons. Plan/snapshot files are created as
+  needed.
+
+
+[0.2.5] - 2026-06-28
+====================
+
+Added
+-----
+- Agents panel Stop button; cooperative cancel in AgentEngine streaming.
+
+
 [0.2.4] - 2026-06-28
 ====================
 

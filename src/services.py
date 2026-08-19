@@ -61,7 +61,7 @@ def check_piper(piper_exe=None, piper_voice=None):
     return _ok("installed")
 
 
-def check_all(settings=None):
+def check_all(settings=None, timeout=4):
     if settings is not None:
         comfy = settings.get("services.comfyui_url", config.COMFYUI_URL)
         alltalk = settings.get("services.alltalk_url", config.ALLTALK_URL)
@@ -71,7 +71,7 @@ def check_all(settings=None):
         comfy, alltalk = config.COMFYUI_URL, config.ALLTALK_URL
         piper_exe, piper_voice = config.PIPER_EXE, config.PIPER_VOICE
     return {
-        "comfyui": check_comfyui(comfy),
-        "alltalk": check_alltalk(alltalk),
+        "comfyui": check_comfyui(comfy, timeout=timeout),
+        "alltalk": check_alltalk(alltalk, timeout=timeout),
         "piper": check_piper(piper_exe, piper_voice),
     }

@@ -1,97 +1,49 @@
 RADIX CORE - INSTALLATION (WINDOWS)
 ===================================
 
-This guide gets Radix Core running on a Windows PC. No coding required. Just
-follow the steps in order and click what it tells you to.
+This guide gets Radix Core running on a Windows PC. No coding required.
 
-NOTE: You'll need Windows 10 or 11, and free disk space depending on what you
-use: about 20 GB for writing only, or about 50-60 GB for the full experience
-with image generation and voice (the ComfyUI image models are large - see
-Disk space below for the breakdown).
-Time: about 10 minutes to set up the app, plus extra time later if you choose
-to download the AI models (a big about 15 GB download).
+NOTE: Windows 10 or 11. The writing studio is a few hundred MB plus Python.
+Local LLM models add about 5 GB (Architect) up to about 15 GB (all three).
+ComfyUI image models are much larger if you add the Image pack later.
 
 
 PART 1 - THE EASY WAY (DO THIS)
 ===============================
 
-There are only four steps. Take your time; nothing here can break your PC.
+STEP 1 - PYTHON (ONCE)
+----------------------
+If Command Prompt `python --version` already shows 3.10 or newer, skip this.
+Otherwise: https://www.python.org/downloads/ — tick **Add python.exe to PATH**,
+then Install Now.
 
 
-STEP 1 - INSTALL PYTHON (ONE TIME ONLY)
----------------------------------------
+STEP 2 - START RADIX
+--------------------
+Put the radix_core folder in Documents (unzip if needed).
 
-Python is the free program Radix Core runs on. You only ever do this once.
+Double-click **install.bat**, or just **Start Radix Core.bat** (first run
+installs the writing studio). If Windows says "protected your PC": More info
+→ Run anyway.
 
-First, check whether you already have it (many PCs do):
-
-1. Click the Start menu, type cmd, and press Enter to open a black Command
-   Prompt window.
-2. Type this exactly and press Enter:
-
-
-   python --version
+Create or open a project. You can write immediately. AI is off until you
+enable a pack.
 
 
-3. Read the result:
-   - If it says Python 3.10 or higher (e.g. Python 3.11.5, Python 3.13.1),
-     you're done - skip to Step 2.
-   - If it says Python 3.9 or lower, or you get an error like "'python' is not
-     recognized" or a Microsoft Store page opens, you need to install it below.
+STEP 3 - OPTIONAL PACKS (IN THE APP)
+------------------------------------
+Left toolbar → **Add Ons**. Tick Enable, then use the Install buttons.
 
-To install Python:
+  Local LLM  1) Install inference engine  2) Download models
+             (Architect only is enough for Write; all three ~15 GB)
+  Image      Install ComfyUI (link in the panel), Browse to its folder,
+             Launch, Sync assets
+  Audio      Install Piper (small, offline). AllTalk folder is optional
 
-1. Go to https://www.python.org/downloads/
-2. Click the big yellow "Download Python" button.
-3. Open the file you just downloaded (it's in your Downloads folder).
-4. VERY IMPORTANT: on the first screen, tick the little box at the bottom that
-   says "Add python.exe to PATH". (If you miss this, Radix Core won't find
-   Python.)
-5. Click "Install Now" and wait for it to finish, then click Close.
-6. To confirm it worked, open a new Command Prompt and run python --version
-   again - it should now show 3.10 or higher.
+Keep writing while downloads run. get_models.bat still works from Explorer
+if you prefer a console.
 
-That's it - you won't need to open Python yourself. Radix Core uses it for you.
-
-
-STEP 2 - PUT THE RADIX CORE FOLDER SOMEWHERE EASY
--------------------------------------------------
-
-If you received Radix Core as a .zip file, right-click it and choose
-"Extract All...", then pick a simple spot like your Documents folder.
-You should end up with a folder named radix_core that has files like
-install.bat and Start Radix Core.bat inside it.
-
-
-STEP 3 - RUN THE INSTALLER
---------------------------
-
-1. Open the radix_core folder.
-2. Find the file named install.bat and double-click it.
-3. A black window will open and start setting things up. This is normal -
-   just let it run (it can take a few minutes).
-   - If a blue box says "Windows protected your PC", click "More info",
-     then "Run anyway". (This warning shows up for any new unsigned program;
-     the installer is safe.)
-4. When it finishes it asks "Launch Radix Core now? [y/N]" - type y and
-   press Enter to open the app for the first time.
-
-
-STEP 4 - OPEN THE APP ANY TIME
-------------------------------
-
-From now on, just double-click Start Radix Core.bat whenever you want to
-start Radix Core. (You never have to run the installer again.)
-
-What happens when you double-click Start Radix Core.bat:
-
-1. A black console window opens briefly. It ensures the virtual environment
-   exists, then runs scripts/start_services.py. That window reports whether
-   AllTalk, ComfyUI, and Piper are up (and starts AllTalk if needed). Let it
-   finish - this is normal.
-2. The Radix Core app window opens. On first launch, a Projects launcher
-   lets you continue your last project, open another, or start a new one.
-3. The ? button in the top bar opens the in-app User Guide any time.
+Daily launch: always **Start Radix Core.bat**. Help is on the left toolbar.
 
 
 UPDATING RADIX CORE
@@ -110,37 +62,22 @@ Help -> About & Updates in the app.
 DEMO MODE VS. THE REAL AI
 -------------------------
 
-Right after install, Radix Core works in demo mode: the AI replies start with
-[MOCK ...]. This is expected - it means everything is working, but the actual
-AI "brains" (the models) aren't downloaded yet. You can explore the whole
-interface like this.
-
-When you're ready for the real AI:
-
-- Double-click get_models.bat. It downloads the three AI models (about 15 GB,
-  so give it time) into the models folder.
-- Close and reopen the app with Start Radix Core.bat. The [MOCK ...] tags
-  disappear and the real AI takes over.
-
-The image generation and voice features are optional extras - see Part 3 if
-you want them later.
+AI is off until you enable the Local LLM pack in Add Ons. After you install
+the inference engine and at least one GGUF, Write/Chat use the real model.
+If the pack is on but files are missing, the status bar shows MOCK MODE.
 
 
 IF SOMETHING GOES WRONG (EASY-WAY FIXES)
 ----------------------------------------
 
-- The black window flashes and closes instantly / says Python not found:
-  Python wasn't installed with the PATH box ticked. Re-run the Python installer
-  from Step 1 and make sure "Add python.exe to PATH" is checked.
-- "Windows protected your PC" popup: click More info -> Run anyway.
-- Start Radix Core.bat says Python wasn't found: install Python from Step 1
-  (make sure "Add python.exe to PATH" is ticked), then double-click it again.
-  It sets everything else up on its own.
-- The app is slow / still says [MOCK ...]: that's demo mode - run get_models.bat
-  to add the real AI models.
+- The black window flashes / Python not found: re-run the Python installer
+  with "Add python.exe to PATH" ticked.
+- "Windows protected your PC": More info → Run anyway.
+- App installed but Write is hidden: that is correct until Add Ons → Local LLM.
+- MOCK MODE after enabling LLM: Install inference engine, then download models.
 
-If you're comfortable with the command line and want to customize things (GPU
-speed-up, manual model placement, ComfyUI/voice), keep reading.
+If you're comfortable with the command line (GPU wheel details, ComfyUI),
+keep reading Part 2 and Part 3.
 
 
 PART 2 - ADVANCED / MANUAL INSTALL (OPTIONAL)
@@ -231,7 +168,7 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 -----------------------------------
 
 On that first launch the bootstrap runs pip install -r requirements.txt into
-the venv for you - CustomTkinter, Pillow, llama-cpp-python, the service
+the venv for you - PySide6, Pillow, pyenchant, llama-cpp-python, the service
 clients, and audio playback libraries - so there's nothing to install manually.
 
 To refresh or reinstall them yourself later:
@@ -399,9 +336,8 @@ completely optional - skip them if you just want the writing features.
 ------------------------------------------
 
 Radix Core is a hub that drives your separately-running ComfyUI and AllTalk
-processes - it never bundles or modifies their environments. The Setup panel
-(top bar -> Setup, or the ... More drawer on a narrow window) is the one place
-to wire them up:
+processes - it never bundles or modifies their environments. Enable the Image
+or Audio pack in Add Ons, then use that panel to set folders, launch, and sync.
 
 1. Enter the Server URL and Install folder for ComfyUI and AllTalk (use
    Browse), plus the Piper exe/voice if you use Piper. Click Save.

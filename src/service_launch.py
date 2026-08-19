@@ -95,7 +95,10 @@ def plan_startup(settings):
 
 
 def launch_alltalk(settings, wait_s=45):
-    """Start AllTalk from services.alltalk_dir and wait until reachable.
+    """Start AllTalk from services.alltalk_dir.
+
+    Spawns a detached console on Windows. When ``wait_s`` is 0, returns
+    immediately after launch without polling for readiness.
 
     Returns {ok, detail}. Safe to call when already running (returns ok).
     """
@@ -112,6 +115,8 @@ def launch_alltalk(settings, wait_s=45):
         _spawn(script, folder)
     except Exception as exc:
         return {"ok": False, "detail": f"failed to launch AllTalk: {exc}"}
+    if wait_s <= 0:
+        return {"ok": True, "detail": "starting in its own window (app won't wait)"}
     url = settings.get("services.alltalk_url", config.ALLTALK_URL)
     deadline = time.time() + max(5, wait_s)
     while time.time() < deadline:
@@ -159,10 +164,12 @@ def run_startup(settings):
     plan = plan_startup(settings)
     notices = []
     if plan["alltalk"]["action"] == "launch":
-        res = launch_alltalk(settings)
+        res = launch_alltalk(settings, wait_s=0)
         plan["alltalk"]["state"] = "running" if res["ok"] else "down"
-        notices.append(("AllTalk: " + res["detail"]) if not res["ok"]
-                       else "AllTalk started.")
+        if res["ok"]:
+            notices.append("AllTalk: " + res["detail"])
+        else:
+            notices.append("AllTalk: " + res["detail"])
     elif plan["alltalk"]["action"] == "manual" and \
             plan["alltalk"]["state"] == "down":
         notices.append(plan["alltalk"]["detail"])

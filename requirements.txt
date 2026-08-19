@@ -1,9 +1,12 @@
-# GUI
-customtkinter>=5.2.0
+# GUI (PySide6 v1)
+PySide6>=6.6.0
 pillow>=10.0.0
 
-# Inference engine (see README for the CUDA / prebuilt-wheel install on Windows)
-llama-cpp-python>=0.2.79
+# Writing suite
+pyenchant>=3.2.0
+
+# llama-cpp-python is installed by scripts/bootstrap_deps.py (CPU or CUDA wheel)
+# so a missing compiler never blocks the writing studio.
 
 # Services: ComfyUI image generation + AllTalk/Piper TTS
 requests>=2.31.0

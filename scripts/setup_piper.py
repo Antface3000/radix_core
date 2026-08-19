@@ -80,17 +80,19 @@ def _download_voice():
     return ok
 
 
-def main():
+def setup(log=print) -> bool:
     os.makedirs(PIPER_DIR, exist_ok=True)
     bin_ok = _download_binary()
     voice_ok = _download_voice()
-    print("-" * 60)
     if bin_ok and voice_ok:
-        print("[piper] setup complete - offline voice is ready.")
-        return 0
-    print("[piper] setup incomplete - see messages above. AllTalk can still be "
-          "used as the primary voice.")
-    return 1
+        log("[piper] setup complete — offline voice is ready.")
+        return True
+    log("[piper] setup incomplete. AllTalk can still be used if you have it.")
+    return False
+
+
+def main():
+    return 0 if setup() else 1
 
 
 if __name__ == "__main__":

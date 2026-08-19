@@ -21,8 +21,12 @@ import time
 
 import config
 from src import personas, projects, worldcontext
+from src.logutil import get_logger
 from src.memory import Memory
 from src.settings import Settings
+from src.llm_runner import LlmRunner
+
+log = get_logger("engine")
 
 try:
     from llama_cpp import Llama
@@ -33,6 +37,20 @@ except Exception:  # pragma: no cover - import guard
 
 # Matches DeepSeek-R1 style reasoning blocks: <think> ... </think>
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+_ANTI_REPEAT = (
+    "\n\nDo not repeat or paraphrase facts already present in SETTING above. "
+    "Add only new, task-specific information."
+)
+
+_STEP_NO_CAPTURE = (
+    "\n\nDo not use [[REMEMBER]], [[BIBLE:*]], [[CHARACTER]], or other canon "
+    "markers in this step. Focus on your assignment only."
+)
+
+
+class RunCancelled(Exception):
+    """Raised when the user stops an in-flight agent run."""
 
 
 class AgentEngine:
@@ -48,6 +66,8 @@ class AgentEngine:
         self.flush_callback = None  # optional GUI hook: flush unsaved story data
         self.capture_callback = None  # optional GUI hook: refresh canon panels
         self._last_capture_summary = worldcontext.empty_capture_summary()
+        self._cancel_requested = False
+        self.llm = LlmRunner(self.settings)
 
         self.project_id = None
         self.paths = None
@@ -61,7 +81,10 @@ class AgentEngine:
         projects.set_active_project_id(project_id)
         self.project_id = project_id
         self.paths = projects.project_paths(project_id)
+        from src import series
+        self.paths = series.overlay_canon_paths(self.paths, project_id)
         self.memory = Memory(self.paths["memory"])
+        log.info("Project active: %s", project_id)
         return project_id
 
     def list_projects(self):
@@ -76,7 +99,8 @@ class AgentEngine:
 
     # ----------------------- persona helpers -------------------------------
     def get_personas_grouped(self):
-        return personas.get_personas_grouped(self.settings.enabled_personas(self.project_id))
+        return personas.get_personas_grouped(
+            self.settings.selectable_personas(self.project_id))
 
     def _resolve_persona(self, identifier):
         p = self.settings.persona(self.project_id, identifier)
@@ -84,37 +108,22 @@ class AgentEngine:
             raise ValueError(f"Unknown persona: {identifier!r}")
         return p
 
+    @staticmethod
+    def _dispatch_system_prompt(persona):
+        """Orchestration dispatch: drop persistence marker block (see _STEP_NO_CAPTURE)."""
+        from src import personas
+        text = persona.get("system_prompt") or ""
+        note = personas._REMEMBER_NOTE
+        if note in text:
+            text = text.replace(note, "")
+        return text.strip()
+
     # ----------------------- model loading ---------------------------------
     def _load_model(self, model_key):
-        if self.current_key == model_key:
-            return self.current_llm
-        self.unload()  # single-slot
-
-        spec = self.settings.model_spec(model_key)
-        if spec is None:
-            raise KeyError(f"No model registered for key {model_key!r}")
-        path = spec.get("path", "")
-        if not LLAMA_AVAILABLE or not os.path.exists(path):
-            self.current_key = model_key
-            self.current_llm = None
-            return None
-
-        self.current_llm = Llama(
-            model_path=path,
-            n_ctx=spec.get("n_ctx", 4096),
-            n_gpu_layers=spec.get("n_gpu_layers", -1),
-            verbose=False,
-            **spec.get("extra", {}),
-        )
-        self.current_key = model_key
-        return self.current_llm
+        return self.llm._load_model(model_key)
 
     def unload(self):
-        if self.current_llm is not None:
-            del self.current_llm
-        self.current_llm = None
-        self.current_key = None
-        gc.collect()
+        self.llm.unload()
 
     # ----------------------- generation params -----------------------------
     def _temp(self, persona):
@@ -133,6 +142,21 @@ class AgentEngine:
             except Exception:
                 pass
 
+    def clear_cancel(self):
+        self._cancel_requested = False
+        self.llm.clear_cancel()
+
+    def request_cancel(self):
+        self._cancel_requested = True
+        self.llm.request_cancel()
+
+    def is_cancelled(self):
+        return self._cancel_requested or self.llm.is_cancelled()
+
+    def _check_cancel(self):
+        if self.is_cancelled():
+            raise RunCancelled()
+
     # ----------------------- inference -------------------------------------
     def execute_task(self, persona_identifier, user_input, show_think=False,
                      max_tokens=None):
@@ -149,229 +173,117 @@ class AgentEngine:
     def stream_task(self, persona_identifier, user_input, show_think=False,
                     max_tokens=None):
         """Generator yielding visible text deltas as they are produced."""
+        self.clear_cancel()
         self._flush_context()
         self._last_capture_summary = worldcontext.empty_capture_summary()
         p = self._resolve_persona(persona_identifier)
         messages = self._build_messages(p, user_input)
-        for delta in self._stream_generate(p, messages, show_think, max_tokens):
-            yield delta
+        try:
+            for delta in self._stream_generate(p, messages, show_think, max_tokens):
+                yield delta
+        except RunCancelled:
+            return
         self._finalize(p, user_input)
 
     def _stream_generate(self, persona, messages, show_think=False,
                          max_tokens=None):
-        """Core generator: stream one completion for `persona`.
+        """Core generator: stream one completion for `persona`."""
+        for delta in self.llm.stream(
+                persona, messages, show_think, max_tokens, self.llm.cancel_token):
+            yield delta
+        self._last_generation = self.llm.last_generation
+        self.current_key = self.llm.current_key
+        self.current_llm = self.llm.current_llm
 
-        Yields visible text deltas and stashes (raw, visible) in
-        self._last_generation for the caller to persist.
-        """
-        llm = self._load_model(persona["model_key"])
-        raw_parts = []
-        emitted = 0
+    def specialist_system_prompt(self, persona):
+        """Specialist chat prompt: drop persistence markers when capture is off."""
+        if self.context_auto_capture:
+            return persona["system_prompt"]
+        return self._dispatch_system_prompt(persona)
 
-        if llm is None:
-            mock = self._mock_response(persona, messages[-1]["content"])
-            for chunk in self._word_chunks(mock):
-                raw_parts.append(chunk)
-                time.sleep(0.02)
-                yield chunk
-            raw = "".join(raw_parts)
-            visible = raw
-        else:
-            stream = llm.create_chat_completion(
-                messages=messages,
-                temperature=self._temp(persona),
-                max_tokens=self._max_tokens(persona, max_tokens),
-                stream=True,
-            )
-            for chunk in stream:
-                delta = chunk["choices"][0].get("delta", {}).get("content")
-                if not delta:
-                    continue
-                raw_parts.append(delta)
-                raw = "".join(raw_parts)
-                visible = raw if show_think else self._clean_stream(raw)
-                new = visible[emitted:]
-                if new:
-                    emitted = len(visible)
-                    yield new
-            raw = "".join(raw_parts)
-            visible = raw if show_think else self._strip_think(raw)
+    def stream_persona(self, persona_key, instruction, show_think=False, *,
+                       orchestration=False):
+        """OrchestratorLoop adapter."""
+        if orchestration:
+            yield from self._stream_orchestration_dispatch(
+                persona_key, instruction, show_think=show_think)
+            return
+        yield from self.stream_task(persona_key, instruction, show_think=show_think)
 
-        self._last_generation = (raw, visible.strip())
-
-    # ----------------------- orchestration ---------------------------------
-    def orchestrate(self, task, show_think=False, ask_user=None):
-        """Manager-driven multi-agent pipeline (optionally human-in-the-loop).
-
-        Yields event tuples for the GUI:
-            ("plan", [ {persona, instruction}, ... ])
-            ("step", persona, instruction)
-            ("delta", persona, text)
-            ("step_done", persona)
-            ("await_user", prompt)   # (informational; answer comes via ask_user)
-            ("user", answer)
-            ("synthesis", manager_persona)
-            ("done",)
-
-        `ask_user(prompt) -> str` is a blocking callback supplied by the GUI; if
-        provided and HITL is enabled, the Liaison gathers requirements before
-        planning and checks in before synthesis.
-        """
+    def _stream_orchestration_dispatch(self, persona_key, instruction,
+                                       show_think=False):
+        """Scoped dispatch: task instruction + setting only (no persona memory)."""
+        self.clear_cancel()
         self._flush_context()
         self._last_capture_summary = worldcontext.empty_capture_summary()
-        manager = self._resolve_persona(
-            self.settings.get("orchestration.manager_key", "manager"))
-        hitl = bool(self.settings.get("orchestration.hitl", False)) and callable(ask_user)
-
-        augmented_task = task
-
-        # --- HITL: requirements gathering by the Liaison ---
-        if hitl:
-            liaison = self.settings.persona(
-                self.project_id,
-                self.settings.get("orchestration.liaison_key", "user_liaison"))
-            if liaison:
-                yield ("step", liaison, "Gather requirements from the user.")
-                msgs = self._compose([
-                    ("system", liaison["system_prompt"]),
-                ])
-                setting = self._setting_block()
-                if setting:
-                    msgs.append({"role": "system", "content": setting})
-                msgs.append({"role": "user", "content":
-                    "The user wants to: " + task +
-                     "\n\nAsk up to 3 focused clarifying questions before the "
-                     "team begins. If the request is already clear, say so."})
-                for delta in self._stream_generate(liaison, msgs, show_think):
-                    yield ("delta", liaison, delta)
-                _, questions = self._last_generation
-                yield ("step_done", liaison)
-                yield ("await_user", "Answer the Liaison's questions (or leave blank to proceed):")
-                answer = ask_user("Answer the Liaison's questions:") or ""
-                if answer.strip():
-                    yield ("user", answer)
-                    augmented_task = (task + "\n\nUSER CLARIFICATIONS:\n" + answer)
-
-        plan = self._make_plan(augmented_task, manager)
-        yield ("plan", plan)
-
-        working = []  # list of (display_name, output)
-        for step in plan:
-            p = step["persona"]
-            instruction = step["instruction"]
-            yield ("step", p, instruction)
-            messages = self._build_orchestration_messages(
-                p, augmented_task, instruction, working)
-            for delta in self._stream_generate(p, messages, show_think):
-                yield ("delta", p, delta)
-            raw, visible = self._last_generation
-            self.memory.append(p["key"], instruction, visible)
-            self._capture(p, raw)
-            working.append((p["display_name"], visible))
-            yield ("step_done", p)
-
-        # --- HITL: pre-synthesis check-in by the Liaison ---
-        if hitl and working:
-            liaison = self.settings.persona(
-                self.project_id,
-                self.settings.get("orchestration.liaison_key", "user_liaison"))
-            if liaison:
-                yield ("step", liaison, "Summarize progress for the user.")
-                msgs = self._build_synthesis_messages(
-                    augmented_task, working,
-                    system=liaison["system_prompt"] +
-                    "\nSummarize the team's work so far for the user in plain "
-                    "language and ask if they want any changes before the final "
-                    "result.")
-                for delta in self._stream_generate(liaison, msgs, show_think):
-                    yield ("delta", liaison, delta)
-                yield ("step_done", liaison)
-                yield ("await_user", "Any changes before the final result? (blank = proceed):")
-                feedback = ask_user("Any changes before the final result?") or ""
-                if feedback.strip():
-                    yield ("user", feedback)
-                    working.append(("User feedback", feedback))
-
-        if self.settings.get("orchestration.synthesis", True) and working:
-            yield ("synthesis", manager)
-            messages = self._build_synthesis_messages(augmented_task, working)
-            for delta in self._stream_generate(manager, messages, show_think):
-                yield ("delta", manager, delta)
-            raw, visible = self._last_generation
-            self.memory.append(manager["key"], "[synthesis] " + task, visible)
-            self._capture(manager, raw)
-
-        yield ("done",)
-
-    def _make_plan(self, task, manager):
-        roster_personas = [p for p in self.settings.enabled_personas(self.project_id)]
-        roster = personas.roster_for_planner(
-            roster_personas,
-            exclude_keys=(self.settings.get("orchestration.manager_key", "manager"),))
-        max_steps = self.settings.get("orchestration.max_steps", 5)
-        planner_sys = (
-            "You are The Manager, an orchestration planner. Given a TASK, choose "
-            "an ordered pipeline of agents to accomplish it. Prefer to end with a "
-            "review/fact-check step (e.g. lore_curator) when correctness matters.\n"
-            "Respond with ONLY a JSON array, no prose. Each element:\n"
-            '  {"agent": "<exact agent key>", "instruction": "<what they do>"}\n'
-            f"Use at most {max_steps} steps."
-        )
-        planner_user = (
-            f"TASK:\n{task}\n\nAVAILABLE AGENTS (key: role):\n{roster}\n\n"
-            "Return ONLY the JSON plan."
-        )
-        pairs = [("system", planner_sys)]
+        p = self._resolve_persona(persona_key)
+        sys_prompt = self._dispatch_system_prompt(p)
+        messages = [{"role": "system", "content": sys_prompt}]
         setting = self._setting_block()
         if setting:
-            pairs.append(("system", setting))
-        pairs.append(("user", planner_user))
-        messages = self._compose(pairs)
-        text = "".join(self._stream_generate(manager, messages, show_think=False))
-        plan = self._parse_plan(text)
-        return plan or self._default_plan(task)
-
-    def _parse_plan(self, text):
-        import json
-        match = re.search(r"\[.*\]", text, re.DOTALL)
-        if not match:
-            return None
+            messages.append({"role": "system", "content": setting})
+        user_content = instruction
+        if setting:
+            user_content = instruction + _STEP_NO_CAPTURE
+        messages.append({"role": "user", "content": user_content})
         try:
-            data = json.loads(match.group(0))
-        except (json.JSONDecodeError, ValueError):
-            return None
-        if not isinstance(data, list):
-            return None
-        max_steps = self.settings.get("orchestration.max_steps", 5)
-        steps = []
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-            agent = item.get("agent") or item.get("persona") or item.get("key")
-            instruction = (item.get("instruction") or item.get("task") or "").strip()
-            persona = self.settings.persona(self.project_id, agent) if agent else None
-            if persona and instruction:
-                steps.append({"persona": persona, "instruction": instruction})
-            if len(steps) >= max_steps:
-                break
-        return steps or None
+            for delta in self._stream_generate(p, messages, show_think):
+                yield delta
+        except RunCancelled:
+            return
+        self._finalize(p, instruction)
 
-    def _default_plan(self, task):
-        steps = []
-        builder = self.settings.persona(self.project_id, "world_builder")
-        curator = self.settings.persona(self.project_id, "lore_curator")
-        if builder:
-            steps.append({"persona": builder, "instruction": task})
-        if curator:
-            steps.append({
-                "persona": curator,
-                "instruction": ("Fact-check the previous output against "
-                                "established canon and flag inconsistencies."),
-            })
-        if not steps:
-            any_persona = self.settings.enabled_personas(self.project_id)[0]
-            steps.append({"persona": any_persona, "instruction": task})
-        return steps
+    def run_persona(self, persona_key, instruction, show_think=False, *,
+                    orchestration=False):
+        if orchestration:
+            return "".join(self._stream_orchestration_dispatch(
+                persona_key, instruction, show_think=show_think))
+        return self.execute_task(persona_key, instruction, show_think=show_think)
+
+    def finalize_persona(self, persona_key, instruction, raw):
+        p = self._resolve_persona(persona_key)
+        self._last_generation = (raw, raw)
+        self.memory.append(p["key"], instruction, raw.strip())
+        self._capture(p, raw)
+
+    # ----------------------- orchestration ---------------------------------
+    def build_orchestrator_loop(self, ask_user=None):
+        from src.orchestration.loop import OrchestratorLoop
+        from src.orchestration.registry import AgentRegistry
+        from src.tools import build_tools
+
+        registry = AgentRegistry()
+        registry.populate_from_settings(self.settings, self.project_id)
+        loop = OrchestratorLoop(
+            self.project_id,
+            registry,
+            self,
+            self.settings,
+            ask_user=ask_user,
+        )
+        if self.paths:
+            match_mode = self.settings.get("editor.lore_match_mode", "substring")
+            for name, fn in build_tools(self.paths, match_mode=match_mode).items():
+                loop.gatekeeper.register(name, fn)
+        return loop
+
+    def orchestrate(self, task, show_think=False, ask_user=None):
+        """Planner + specialist dispatch via OrchestratorLoop (no silent synthesis rewrite)."""
+        from src.orchestration.runner import run_one_shot_team
+
+        self.clear_cancel()
+        self._flush_context()
+        self._last_capture_summary = worldcontext.empty_capture_summary()
+        loop = self.build_orchestrator_loop(ask_user=ask_user)
+        yield from run_one_shot_team(
+            loop, self, task, show_think=show_think, ask_user=ask_user)
+        summary = self._last_capture_summary
+        if (summary.get("lore") or summary.get("bible") or summary.get("world_state")):
+            if callable(self.capture_callback):
+                try:
+                    self.capture_callback()
+                except Exception:
+                    pass
 
     # ----------------------- message assembly ------------------------------
     @staticmethod
@@ -387,7 +299,8 @@ class AgentEngine:
         return text or None
 
     def _build_messages(self, persona, user_input):
-        messages = [{"role": "system", "content": persona["system_prompt"]}]
+        messages = [{"role": "system",
+                     "content": self.specialist_system_prompt(persona)}]
         setting = self._setting_block()
         if setting:
             messages.append({"role": "system", "content": setting})
@@ -396,7 +309,10 @@ class AgentEngine:
         for turn in self.memory.recent(persona["key"], turns):
             messages.append({"role": "user", "content": turn["user"]})
             messages.append({"role": "assistant", "content": turn["response"]})
-        messages.append({"role": "user", "content": user_input})
+        user_content = user_input
+        if setting:
+            user_content = user_input + _ANTI_REPEAT
+        messages.append({"role": "user", "content": user_content})
         return messages
 
     def _build_orchestration_messages(self, persona, task, instruction, working):
@@ -410,6 +326,8 @@ class AgentEngine:
             for name, out in working:
                 brief += f"\n[{name}]:\n{out}\n"
         brief += f"\nYOUR ASSIGNMENT:\n{instruction}"
+        if setting:
+            brief += _STEP_NO_CAPTURE
         messages.append({"role": "user", "content": brief})
         return messages
 
@@ -418,15 +336,14 @@ class AgentEngine:
             "You are The Manager. Synthesize the agents' work into one coherent "
             "final result for the task. Resolve conflicts, surface any "
             "unresolved fact-check flags, and keep it tight and actionable.\n\n"
-            "CANON EXPORT: Wrap durable facts in plain markers (no markdown inside "
-            "tags):\n"
-            "- [[CHARACTER:Name]]...[[/CHARACTER]] for character profiles\n"
-            "- [[WORLD]]...[[/WORLD]] for places/factions\n"
-            "- [[BIBLE:premise]]...[[/BIBLE]], [[BIBLE:synopsis]]...[[/BIBLE]], "
-            "[[BIBLE:genreTone]]...[[/BIBLE]], [[BIBLE:worldRules]]...[[/BIBLE]]\n"
-            "- [[WORLDSTATE:currentLocation]]...[[/WORLDSTATE]], "
-            "[[WORLDSTATE:currentDate]]...[[/WORLDSTATE]]\n"
-            "Include these markers in your synthesis so the project canon updates.")
+            "CANON EXPORT (optional): Wrap only genuinely NEW facts not already "
+            "in SETTING in plain markers (no markdown inside tags). If nothing "
+            "new was discovered, omit all markers entirely:\n"
+            "- [[CHARACTER:Name]]...[[/CHARACTER]] for new character profiles\n"
+            "- [[WORLD]]...[[/WORLD]] for new places/factions\n"
+            "- [[BIBLE:premise]]...[[/BIBLE]], etc. only for new bible facts\n"
+            "- [[REMEMBER]]...[[/REMEMBER]] for short new lore snippets\n"
+            "Do not re-export premise, synopsis, or lore already in SETTING.")
         user = f"TASK:\n{task}\n\nAGENT OUTPUTS:\n"
         for name, out in working:
             user += f"\n[{name}]:\n{out}\n"
@@ -444,21 +361,26 @@ class AgentEngine:
         self.memory.append(persona["key"], user_input, visible)
         self._capture(persona, raw)
 
-    def _capture(self, persona, raw_text):
+    def _capture(self, persona, raw_text, *, notify_ui=True):
         if not self.context_auto_capture or not raw_text:
             return
         bible_mode = self.settings.get("context.capture_bible_mode", "empty")
         if bible_mode == "replace":
             bible_mode = "merge"
+        stage = None
+        if self.settings.get("context.capture_review", True):
+            from src.capture_queue import CaptureQueue
+            stage = CaptureQueue(self.paths).stage
         summary = worldcontext.capture_from_agent(
             self.paths, raw_text,
             default_kind=persona.get("capture_kind") or "world",
             source=persona.get("display_name", "agent"),
             bible_mode=bible_mode,
+            stage=stage,
         )
         self._last_capture_summary = worldcontext.merge_capture_summaries(
             self._last_capture_summary, summary)
-        if callable(self.capture_callback):
+        if notify_ui and callable(self.capture_callback):
             try:
                 self.capture_callback()
             except Exception:
@@ -511,7 +433,8 @@ class AgentEngine:
         return visible
 
     def stream_prompt(self, model_key, system_prompt, user_prompt,
-                      temperature=0.7, max_tokens=None, show_think=False):
+                      temperature=0.7, max_tokens=None, show_think=False,
+                      repeat_penalty=None):
         """Stream a one-shot (system,user) completion with no memory/injection.
 
         Used by the editor AI pipelines, which assemble their own context via
@@ -520,6 +443,8 @@ class AgentEngine:
         self._flush_context()
         pseudo = {"model_key": model_key, "temperature": temperature,
                   "display_name": "Editor", "capture_kind": None}
+        if repeat_penalty is not None:
+            pseudo["repeat_penalty"] = repeat_penalty
         messages = self._compose([("system", system_prompt),
                                    ("user", user_prompt)])
         for delta in self._stream_generate(pseudo, messages, show_think,

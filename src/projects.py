@@ -47,6 +47,15 @@ PROJECT_FILE_NAMES = {
     "chapters": "chapters",
     "portraits": "portraits",
     "backgrounds": "backgrounds",
+    "plan": "plan.json",
+    "plan_md": "Plan.md",
+    "events": "events.jsonl",
+    "paused_session": "paused_session.json",
+    "capture_queue": "capture_queue.json",
+    "runs": "runs",
+    "chapter_summaries": "chapter_summaries.json",
+    "snapshots": "snapshots",
+    "session_stats": "session_stats.json",
 }
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -98,6 +107,17 @@ def project_paths(project_id):
         "chapters": os.path.join(root, PROJECT_FILE_NAMES["chapters"]),
         "portraits": os.path.join(root, PROJECT_FILE_NAMES["portraits"]),
         "backgrounds": os.path.join(root, PROJECT_FILE_NAMES["backgrounds"]),
+        "plan": os.path.join(root, PROJECT_FILE_NAMES["plan"]),
+        "plan_md": os.path.join(root, PROJECT_FILE_NAMES["plan_md"]),
+        "events": os.path.join(root, PROJECT_FILE_NAMES["events"]),
+        "paused_session": os.path.join(root, PROJECT_FILE_NAMES["paused_session"]),
+        "capture_queue": os.path.join(root, PROJECT_FILE_NAMES["capture_queue"]),
+        "runs": os.path.join(root, PROJECT_FILE_NAMES["runs"]),
+        "chapter_summaries": os.path.join(
+            root, PROJECT_FILE_NAMES["chapter_summaries"]),
+        "snapshots": os.path.join(root, PROJECT_FILE_NAMES["snapshots"]),
+        "session_stats": os.path.join(
+            root, PROJECT_FILE_NAMES["session_stats"]),
     }
 
 
@@ -121,6 +141,15 @@ def ensure_project_layout(project_id):
         write_json(p["world_state"], {})
     if not os.path.exists(p["memory"]):
         write_json(p["memory"], {})
+    if not os.path.exists(p["plan"]):
+        from src.orchestration.plan_state import empty_plan
+        idx = read_projects_index()
+        proj = next((x for x in idx["projects"] if x["id"] == project_id), None)
+        title = (proj or {}).get("name", "Working title")
+        write_json(p["plan"], empty_plan(title))
+    if not os.path.exists(p["plan_md"]):
+        from src.orchestration.plan_state import PlanStateStore
+        PlanStateStore(project_id).export_markdown()
     return p
 
 

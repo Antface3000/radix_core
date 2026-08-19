@@ -1,8 +1,4 @@
-"""AI generation helpers for Story Bible field widgets.
-
-Supports single-tier (T1/T2/T3) streaming and full orchestration with synthesis
-capture for populating bible / outline / lore / world-state fields.
-"""
+"""AI generation helpers for Story Bible field widgets."""
 
 from src import worldcontext
 
@@ -35,21 +31,22 @@ def _build_user_prompt(field_label, user_prompt, existing_text, extra_context):
     return "\n\n".join(parts)
 
 
-def _system_prompt(paths):
-    setting = worldcontext.assemble(paths)
+def _system_prompt(paths, exclude_bible_keys=None):
+    setting = worldcontext.assemble(paths, exclude_bible_keys=exclude_bible_keys)
     if setting.strip():
         return f"{_SYSTEM}\n\n{setting}"
     return _SYSTEM
 
 
 def stream_field(engine, paths, field_label, user_prompt, mode, existing_text="",
-                 extra_context="", temperature=0.7, max_tokens=None):
+                 extra_context="", temperature=0.7, max_tokens=None,
+                 exclude_bible_keys=None):
     """Yield text deltas for T1/T2/T3 modes. Raises on unknown mode."""
     model_key = TIER_MODES.get(mode)
     if not model_key:
         raise ValueError(f"Not a tier mode: {mode!r}")
     user = _build_user_prompt(field_label, user_prompt, existing_text, extra_context)
-    system = _system_prompt(paths)
+    system = _system_prompt(paths, exclude_bible_keys=exclude_bible_keys)
     yield from engine.stream_prompt(
         model_key, system, user,
         temperature=temperature, max_tokens=max_tokens, show_think=False)
@@ -82,10 +79,10 @@ def orchestrate_field(engine, task, ask_user=None, show_think=False):
 
 
 def build_orchestrated_task(paths, field_label, user_prompt, existing_text="",
-                            extra_context=""):
+                            extra_context="", exclude_bible_keys=None):
     """Compose a manager task string for orchestrated field generation."""
     user = _build_user_prompt(field_label, user_prompt, existing_text, extra_context)
-    setting = worldcontext.assemble(paths)
+    setting = worldcontext.assemble(paths, exclude_bible_keys=exclude_bible_keys)
     task = (
         f"Fill in the Story Bible field '{field_label}' for the author's project.\n\n"
         f"{user}\n\n"

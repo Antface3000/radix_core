@@ -39,8 +39,14 @@ def _write_order(chapters_dir, order):
 
 
 def list_chapters(chapters_dir):
-    return [{"id": c["id"], "name": c["name"]}
-            for c in _read_order(chapters_dir)]
+    out = []
+    for c in _read_order(chapters_dir):
+        item = {"id": c["id"], "name": c["name"]}
+        for key in ("status", "pov", "location", "storyDate"):
+            if c.get(key):
+                item[key] = c[key]
+        out.append(item)
+    return out
 
 
 def _find(chapters_dir, chapter_id):
@@ -58,7 +64,11 @@ def read(chapters_dir, chapter_id):
             content = f.read()
     except OSError:
         content = ""
-    return {"id": meta["id"], "name": meta["name"], "content": content}
+    return {"id": meta["id"], "name": meta["name"], "content": content,
+            "status": meta.get("status", "draft"),
+            "pov": meta.get("pov", ""),
+            "location": meta.get("location", ""),
+            "storyDate": meta.get("storyDate", "")}
 
 
 def create(chapters_dir, name):
@@ -70,7 +80,8 @@ def create(chapters_dir, name):
     file_name = f"{base}-{chapter_id[:8]}.txt"
     with open(os.path.join(chapters_dir, file_name), "w", encoding="utf-8") as f:
         f.write("")
-    meta = {"id": chapter_id, "name": name, "file": file_name}
+    meta = {"id": chapter_id, "name": name, "file": file_name,
+            "status": "draft", "pov": "", "location": "", "storyDate": ""}
     order.append(meta)
     _write_order(chapters_dir, order)
     return {"id": chapter_id, "name": name, "content": ""}
@@ -149,3 +160,16 @@ def reorder(chapters_dir, ordered_ids):
             new_order.append(c)
     _write_order(chapters_dir, new_order)
     return list_chapters(chapters_dir)
+
+
+def update_meta(chapters_dir, chapter_id, **fields):
+    order = _read_order(chapters_dir)
+    allowed = {"name", "status", "pov", "location", "storyDate"}
+    for meta in order:
+        if meta["id"] == chapter_id:
+            for key, value in fields.items():
+                if key in allowed:
+                    meta[key] = value
+            _write_order(chapters_dir, order)
+            return True
+    raise ValueError("Chapter not found: " + str(chapter_id))

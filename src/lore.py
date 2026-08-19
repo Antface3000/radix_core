@@ -10,6 +10,8 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+from src import lore_types
+
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
@@ -45,10 +47,12 @@ def derive_image_prompt(entry):
 
 def normalize_entry(entry, fallback_type="character"):
     entry = entry or {}
-    entry_type = entry.get("type") or fallback_type
+    storage_type = entry.get("type") or fallback_type
+    if storage_type not in ("character", "world"):
+        storage_type = "character" if storage_type == "character" else "world"
     now = _now()
-    sub_entry_type = entry.get("entryType") or (
-        "world" if entry_type == "world" else "character")
+    entry_type = lore_types.normalize_entry_type(
+        entry.get("entryType"), storage_type)
 
     scope = entry.get("chapterScope")
     if isinstance(scope, dict):
@@ -63,20 +67,32 @@ def normalize_entry(entry, fallback_type="character"):
     if not keywords_src:
         keywords_src = [entry.get("name")]
 
+    notes = entry.get("notes") or entry.get("content") or entry.get("description") or ""
+
+    rel = entry.get("relationships")
+    if isinstance(rel, list):
+        relationships = rel
+    elif isinstance(rel, str) and rel.strip():
+        relationships = lore_types.parse_relationships(rel)
+    else:
+        relationships = []
+
     return {
         "id": entry.get("id") or str(uuid.uuid4()),
         "name": entry.get("name") or "Untitled",
-        "notes": entry.get("notes") or "",
+        "notes": notes,
+        "description": entry.get("description") or notes,
         "keywords": [k for k in _to_array(keywords_src) if k],
-        "type": entry_type,
-        "entryType": sub_entry_type,
+        "type": lore_types.storage_for_entry_type(entry_type),
+        "entryType": entry_type,
         "aliases": _to_array(entry.get("aliases")),
         "pronouns": entry.get("pronouns") or "",
+        "role": entry.get("role") or "",
         "appearance": entry.get("appearance") or "",
         "goals": entry.get("goals") or "",
-        "relationships": entry.get("relationships") if isinstance(
-            entry.get("relationships"), list) else [],
+        "relationships": relationships,
         "voiceStyle": entry.get("voiceStyle") or "",
+        "creatureType": entry.get("creatureType") or entry.get("species") or "",
         "chapterScope": chapter_scope,
         "tags": _to_array(entry.get("tags")),
         "timelineNotes": _to_array(entry.get("timelineNotes")),
@@ -88,7 +104,6 @@ def normalize_entry(entry, fallback_type="character"):
             "imagePrompt") else "",
         "imageNegativePrompt": entry.get("imageNegativePrompt") if isinstance(
             entry.get("imageNegativePrompt"), str) else "",
-        # World-entry fields.
         "climate": entry.get("climate") or "",
         "inhabitants": entry.get("inhabitants") or "",
         "history": entry.get("history") or "",
@@ -128,17 +143,16 @@ def write(lore_path, data):
 
 def add(lore_path, entry):
     data = read(lore_path)
-    storage_type = entry.get("type") or (
-        "character" if entry.get("entryType") == "character" else "world")
+    entry_type = lore_types.normalize_entry_type(
+        entry.get("entryType"), entry.get("type") or "world")
+    storage_type = lore_types.storage_for_entry_type(entry_type)
     new_entry = normalize_entry(
-        {**entry, "id": str(uuid.uuid4()), "type": storage_type,
-         "createdAt": _now(), "updatedAt": _now()},
+        {**entry, "id": str(uuid.uuid4()), "entryType": entry_type,
+         "type": storage_type, "createdAt": _now(), "updatedAt": _now()},
         storage_type,
     )
-    if storage_type == "world":
-        data["world"].append(new_entry)
-    else:
-        data["characters"].append(new_entry)
+    bucket = "world" if storage_type == "world" else "characters"
+    data[bucket].append(new_entry)
     write(lore_path, data)
     return new_entry
 
@@ -207,55 +221,81 @@ def _append_notes(old, new, source="agent"):
 
 
 def upsert(lore_path, entry, mode="merge", source="agent"):
-    """Insert or merge a lore entry matched by normalized name + type."""
-    storage_type = entry.get("type") or (
-        "character" if entry.get("entryType") == "character" else "world")
+    """Insert or merge a lore entry matched by normalized name + storage bucket."""
+    entry_type = lore_types.normalize_entry_type(
+        entry.get("entryType"), entry.get("type") or "world")
+    storage_type = lore_types.storage_for_entry_type(entry_type)
     bucket = "world" if storage_type == "world" else "characters"
     name = (entry.get("name") or "").strip()
     if not name:
-        return add(lore_path, entry)
+        return add(lore_path, {**entry, "entryType": entry_type})
     data = read(lore_path)
     key = _norm_name(name)
     capture_mode = mode if mode in ("empty", "append", "merge") else "merge"
     for i, existing in enumerate(data[bucket]):
         if _norm_name(existing.get("name")) != key:
             continue
-        old_notes = (existing.get("notes") or "").strip()
-        new_notes = (entry.get("notes") or "").strip()
-        if capture_mode == "empty" and old_notes:
-            return existing
+        if existing.get("entryType") != entry_type and entry.get("entryType"):
+            pass  # same name different type — still merge into same named row
         merged = dict(existing)
-        for field in ("notes", "appearance", "goals"):
+        for field in _LORE_MERGE_TEXT_FIELDS:
             new_val = (entry.get(field) or "").strip()
             old_val = (existing.get(field) or "").strip()
             if not new_val:
                 continue
-            if field == "notes":
-                if not old_val:
-                    merged[field] = new_val
-                elif capture_mode == "append":
-                    merged[field] = _append_notes(old_val, new_val, source)
-                else:
-                    merged[field] = _merge_notes(old_val, new_val)
-            elif new_val != old_val:
-                if not old_val:
-                    merged[field] = new_val
-                elif capture_mode == "append":
-                    merged[field] = _append_notes(old_val, new_val, source)
-                else:
-                    merged[field] = _merge_notes(old_val, new_val)
-        for field in ("keywords", "aliases"):
+            if field == "notes" and capture_mode == "empty" and old_val:
+                continue
+            if not old_val:
+                merged[field] = new_val
+            elif capture_mode == "append":
+                merged[field] = _append_notes(old_val, new_val, source)
+            else:
+                merged[field] = _merge_notes(old_val, new_val)
+        for field in ("keywords", "aliases", "tags"):
             if entry.get(field):
                 combined = list(dict.fromkeys(
                     _to_array(existing.get(field)) + _to_array(entry.get(field))))
                 merged[field] = combined
+        if entry.get("entryType"):
+            merged["entryType"] = entry_type
         updated = normalize_entry({**merged, "updatedAt": _now()}, storage_type)
         data[bucket][i] = updated
         write(lore_path, data)
         return updated
-    return add(lore_path, entry)
+    return add(lore_path, {**entry, "entryType": entry_type})
+
+
+def save_entry(lore_path, entry):
+    """Upsert by id; moves between characters/world buckets when entryType changes."""
+    data = read(lore_path)
+    eid = entry.get("id")
+    normalized = normalize_entry(entry, entry.get("type") or "world")
+    if not eid:
+        return add(lore_path, normalized)
+    bucket = "world" if normalized["type"] == "world" else "characters"
+    for bkey in ("characters", "world"):
+        data[bkey] = [e for e in data[bkey] if e.get("id") != eid]
+    data[bucket].append(normalized)
+    write(lore_path, data)
+    return normalized
 
 
 def all_entries(lore_path):
     data = read(lore_path)
     return data["characters"] + data["world"]
+
+
+def entries_by_type(lore_path, entry_type: str | None = None):
+    """All entries, optionally filtered by entryType ('all' or None = no filter)."""
+    entries = all_entries(lore_path)
+    if not entry_type or entry_type == "all":
+        return entries
+    return [e for e in entries if e.get("entryType") == entry_type]
+
+
+_LORE_MERGE_TEXT_FIELDS = (
+    "notes", "description", "appearance", "goals", "history", "powers",
+    "origin", "climate", "inhabitants", "leadership", "territory",
+    "participants", "outcome", "when", "role", "voiceStyle", "creatureType",
+    "pronouns",
+)

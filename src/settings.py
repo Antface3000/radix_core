@@ -29,26 +29,31 @@ AGENT_OVERRIDE_FIELDS = ("model_key", "temperature", "max_tokens",
                          "system_prompt", "enabled")
 
 DEFAULT_GLOBAL = {
-    "appearance_mode": config.APPEARANCE_MODE,
-    "color_theme": config.COLOR_THEME,
     "default_project": None,
     "ui": {
         "show_welcome": True,
         "show_startup": True,
         "setup_done": False,
         "dock_width": 460,
+        "lightbox_default_width": config.LIGHTBOX_DEFAULT_WIDTH,
+        "lightbox_default_height": config.LIGHTBOX_DEFAULT_HEIGHT,
+        "lightbox_single_mode": "replace",
+        "pinned_panels": [],
+        "lightbox_geometry": {},
         "panel_font_size": config.PANEL_FONT_SIZE,
         "panel_auto_scroll": config.PANEL_AUTO_SCROLL,
     },
     "generation": {
         "temperature": config.DEFAULT_TEMPERATURE,
         "max_tokens": config.DEFAULT_MAX_TOKENS,
+        "repeat_penalty": config.DEFAULT_REPEAT_PENALTY,
         "streaming": config.STREAMING,
     },
     "context": {
         "inject": config.CONTEXT_INJECT,
         "auto_capture": config.CONTEXT_AUTO_CAPTURE,
         "capture_bible_mode": config.CONTEXT_CAPTURE_BIBLE_MODE,
+        "capture_review": config.CONTEXT_CAPTURE_REVIEW,
         "inject_max_chars": config.CONTEXT_INJECT_MAX_CHARS,
         "memory_recent_turns": config.MEMORY_RECENT_TURNS,
     },
@@ -58,6 +63,7 @@ DEFAULT_GLOBAL = {
         "manager_key": config.ORCHESTRATION_MANAGER_KEY,
         "liaison_key": config.ORCHESTRATION_LIAISON_KEY,
         "hitl": config.ORCHESTRATION_HITL,
+        "ambiguity_check": True,
     },
     "services": {
         "comfyui_url": config.COMFYUI_URL,
@@ -85,30 +91,50 @@ DEFAULT_GLOBAL = {
         "word_goal": config.EDITOR_WORD_GOAL,
         "focus_mode": False,
         "typewriter": False,
+        "spellcheck": True,
+        "autocorrect": False,
+        "include_notes_in_ai": False,
+        "split_mode": 0,
         "lore_autoscan": True,
         "lore_scan_interval_ms": 3000,
+        "lore_max_cards": 5,
+        "lore_match_mode": "substring",
+        "find_case_sensitive": False,
+        "find_whole_words": False,
+        "find_regex": False,
+        "ghost_text": False,           # Write result streams inline as provisional text
         "voice_preset": "my",          # my | alt | neutral (UI: My Style / Alt Style / Neutral Style)
         "style_guide_my": "",
         "style_guide_alt": "",
         # Write pipeline (Ghostwriter draft -> critics review).
         "write_persona": "ghostwriter",
-        "write_critics": ["lore_curator", "prose_critic"],
-        "write_full_team": False,
-        "write_max_tokens": 2400,
-        "write_temperature": 0.65,
-        # Brainstorm.
-        "brainstorm_persona": "quest_architect",
-        "brainstorm_mode": "single",   # single | team
-        "brainstorm_max_tokens": 2200,
+        "write_critics": ["prose_critic"],
+        "write_max_tokens": 1600,
+        "write_temperature": 0.58,
         # Project chat.
-        "chat_persona": "user_liaison",
+        "chat_persona": "quest_architect",
         "chat_max_tokens": 1200,
+    },
+    "team": {
+        "default_specialist": "world_builder",
+        "ideas_persona": "quest_architect",
+        "ideas_max_tokens": 2200,
     },
     "models": {},  # per-tier overrides over MODEL_REGISTRY
     "updates": {
         "check_on_startup": True,
         "last_check_ts": 0,
         "dismissed_version": None,
+    },
+    "lore": {
+        "audit_on_project_open": False,
+        "audit_orphan_scan": True,
+    },
+    "plugins": {
+        "llm": False,
+        "image": False,
+        "audio": False,
+        "extra_paths": [],
     },
 }
 
@@ -146,6 +172,10 @@ class Settings:
     def reload(self):
         raw = _read_json(projects.GLOBAL_CONFIG_PATH, {})
         self.global_data = _deep_merge(DEFAULT_GLOBAL, raw)
+        ui = self.global_data.setdefault("ui", {})
+        if ui.get("lightbox_default_width") == 460:
+            ui["lightbox_default_width"] = config.LIGHTBOX_DEFAULT_WIDTH
+            self.save_global()
 
     def save_global(self):
         _write_json(projects.GLOBAL_CONFIG_PATH, self.global_data)
@@ -157,6 +187,11 @@ class Settings:
                 node = node[part]
             else:
                 return default
+        if dotted == "editor.font_size":
+            try:
+                return max(8, min(int(node), 72))
+            except (TypeError, ValueError):
+                return config.EDITOR_FONT_SIZE
         return node
 
     def set(self, dotted, value, save=True):
@@ -219,7 +254,13 @@ class Settings:
     def enabled_personas(self, project_id=None):
         return [p for p in self.personas(project_id) if p.get("enabled", True)]
 
+    def selectable_personas(self, project_id=None):
+        from src import personas
+        return [p for p in self.enabled_personas(project_id) if personas.is_selectable(p)]
+
     def persona(self, project_id, identifier):
+        from src import personas
+        identifier = personas.PERSONA_KEY_ALIASES.get(identifier, identifier)
         for p in self.personas(project_id):
             if identifier in (p["key"], p["display_name"]):
                 return p

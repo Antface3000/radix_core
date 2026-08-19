@@ -1,7 +1,7 @@
 @echo off
-REM Start Radix Core. This is the file to double-click.
-REM It ensures the .venv exists, starts the local services (AllTalk / ComfyUI /
-REM Piper), then opens the app. There is nothing to set up or activate by hand.
+REM Start Radix Core. Double-click this file.
+REM First run creates .venv if needed. Optional AI/image/speech packs are
+REM installed later from Add Ons inside the app.
 cd /d "%~dp0"
 
 REM 1) Make sure the virtual environment exists (build it on first run).

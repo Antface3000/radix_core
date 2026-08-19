@@ -50,10 +50,10 @@ def _start_alltalk(settings):
         return True
     folder = _ensure_alltalk_dir(settings)
     if not folder:
-        print("[AllTalk] no install folder set - skipping (set it in Setup).")
+        print("[AllTalk] no install folder set - skipping (set it in Add Ons).")
         return False
-    print("[AllTalk] Starting (this can take a minute while it loads)...")
-    res = service_launch.launch_alltalk(settings)
+    print("[AllTalk] Starting in its own window (Radix won't wait for it)...")
+    res = service_launch.launch_alltalk(settings, wait_s=0)
     status = "OK" if res.get("ok") else "DOWN"
     print(f"[AllTalk] {status}: {res.get('detail', '')}")
     return bool(res.get("ok"))
@@ -84,18 +84,29 @@ def _report_piper(settings):
 def main():
     settings = Settings()
     _line("=")
-    print(" Radix Core - starting services")
+    print(" Radix Core")
     _line("=")
 
-    alltalk_ok = _start_alltalk(settings)
-    comfy_ok = _probe_comfyui(settings)
-    piper_ok = _report_piper(settings)
+    from src.plugins import is_enabled
+    if is_enabled(settings, "audio"):
+        alltalk_ok = _start_alltalk(settings)
+        piper_ok = _report_piper(settings)
+    else:
+        print("[Audio] pack off — skipping AllTalk / Piper.")
+        alltalk_ok = False
+        piper_ok = False
+    if is_enabled(settings, "image"):
+        comfy_ok = _probe_comfyui(settings)
+    else:
+        print("[Image] pack off — skipping ComfyUI.")
+        comfy_ok = False
 
     _line()
-    print("Summary:  AllTalk={}  ComfyUI={}  Piper={}".format(
-        "up" if alltalk_ok else "down",
-        "up" if comfy_ok else "down",
-        "ready" if piper_ok else "missing"))
+    if is_enabled(settings, "audio") or is_enabled(settings, "image"):
+        print("Summary:  AllTalk={}  ComfyUI={}  Piper={}".format(
+            "up" if alltalk_ok else "down",
+            "up" if comfy_ok else "down",
+            "ready" if piper_ok else "missing"))
     print("Opening Radix Core...")
     _line()
     return 0
