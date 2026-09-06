@@ -12,8 +12,10 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 from src.settings import DEFAULT_GLOBAL
+from src.story_context import DEFAULT_PROSE_CONSTRAINTS
 from src.logutil import get_logger
 from ui_qt.panels.base import BasePanel
+from ui_qt.widgets.flow_layout import FlowLayout
 
 log = get_logger("settings")
 
@@ -152,6 +154,7 @@ class SettingsPanel(BasePanel):
         orphan = QCheckBox("Include manuscript orphan scan in lore audit")
         orphan.setChecked(s.get("lore.audit_orphan_scan", True))
         orphan.setToolTip("When you run Re-audit manually or from Focus")
+        self._bind("lore.audit_orphan_scan", orphan)
         f.addRow(orphan)
         return w
 
@@ -390,6 +393,38 @@ class SettingsPanel(BasePanel):
         sg_alt.setPlainText(s.get("editor.style_guide_alt") or "")
         self._bind("editor.style_guide_alt", sg_alt)
         pf.addRow("Alt style guide", sg_alt)
+
+        use_pc = QCheckBox("Apply prose constraints on Write")
+        use_pc.setChecked(bool(s.get("editor.use_prose_constraints", True)))
+        use_pc.setToolTip(_tip(
+            "When on, Editor → Write injects the constraints below into the "
+            "Prose Writer and rewrite critics.",
+            "Chat / Team / blurbs are not affected.",
+        ))
+        self._bind("editor.use_prose_constraints", use_pc)
+        pf.addRow(use_pc)
+
+        pc = QPlainTextEdit()
+        pc.setMinimumHeight(180)
+        pc.setMaximumHeight(320)
+        pc.setPlainText(
+            s.get("editor.prose_constraints")
+            or DEFAULT_PROSE_CONSTRAINTS)
+        pc.setToolTip(_tip(
+            "Mandatory anti-trope / pacing rules for manuscript Write.",
+            "Edit freely; use Restore defaults to reset the built-in filter.",
+        ))
+        self._bind("editor.prose_constraints", pc)
+        pc_lbl = QLabel("Prose constraints")
+        pc_lbl.setToolTip(pc.toolTip())
+        pf.addRow(pc_lbl, pc)
+        restore_pc = QPushButton("Restore default prose constraints")
+        restore_pc.setProperty("secondary", True)
+        restore_pc.setToolTip("Replace the box with the built-in anti-trope filter.")
+        restore_pc.clicked.connect(
+            lambda: pc.setPlainText(DEFAULT_PROSE_CONSTRAINTS))
+        pf.addRow("", restore_pc)
+
         v.addWidget(pipe)
 
         team_g = QGroupBox("Team defaults")
@@ -458,7 +493,8 @@ class SettingsPanel(BasePanel):
         af.addRow("System prompt override", self.agent_prompt)
         v.addLayout(af)
 
-        btn_row = QHBoxLayout()
+        btn_host = QWidget()
+        btn_row = FlowLayout(btn_host, hspacing=6, vspacing=4)
         save_ag = QPushButton("Save agent override")
         save_ag.clicked.connect(self._save_agent_override)
         btn_row.addWidget(save_ag)
@@ -466,7 +502,7 @@ class SettingsPanel(BasePanel):
         reset_ag.setProperty("secondary", True)
         reset_ag.clicked.connect(self._reset_agent_override)
         btn_row.addWidget(reset_ag)
-        v.addLayout(btn_row)
+        v.addWidget(btn_host)
         v.addStretch()
         self._load_agent_fields()
         return w
@@ -641,7 +677,9 @@ class SettingsPanel(BasePanel):
         }
         keys = mapping.get(name, ())
         if not keys:
-            QMessageBox.information(self, "Reset", "Agents tab resets per-agent only.")
+            QMessageBox.information(
+                self, "Reset",
+                "Team tab resets per-agent only — use Reset this agent below.")
             return
         for top in keys:
             self._s().global_data[top] = copy.deepcopy(DEFAULT_GLOBAL.get(top, {}))

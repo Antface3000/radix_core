@@ -15,6 +15,7 @@ import json
 import os
 import random
 import re
+import threading
 import time
 import uuid
 
@@ -477,11 +478,24 @@ class ComfyClient:
     def __init__(self, settings=None, engine=None):
         self.settings = settings
         self.engine = engine
+        self._cancel = threading.Event()
 
     def _url(self):
         if self.settings is not None:
             return str(self.settings.get("services.comfyui_url", config.COMFYUI_URL)).rstrip("/")
         return config.COMFYUI_URL.rstrip("/")
+
+    def interrupt(self) -> bool:
+        """Ask ComfyUI to stop the current job and wake local wait loops."""
+        self._cancel.set()
+        try:
+            requests.post(f"{self._url()}/interrupt", timeout=5)
+            return True
+        except requests.RequestException:
+            return False
+
+    def _cancelled(self) -> bool:
+        return self._cancel.is_set()
 
     def _styles_csv_path(self):
         if self.settings is not None:
@@ -543,6 +557,7 @@ class ComfyClient:
         """
         render_options = render_options or {}
         world_state = world_state or {}
+        self._cancel.clear()
         comfy_url = self._url()
         style_prefix = (self.settings.get("image.style_prefix", config.IMAGE_STYLE_PREFIX)
                         if self.settings else config.IMAGE_STYLE_PREFIX) \
@@ -685,7 +700,10 @@ class ComfyClient:
 
     def _history_recover(self, comfy_url, prompt_id, final_nodes, on_image,
                          deadline, poll=5):
+        """Return True on image, False on miss/timeout, 'cancelled' if interrupted."""
         while time.time() < deadline:
+            if self._cancelled():
+                return "cancelled"
             try:
                 r = requests.get(f"{comfy_url}/history/{requests.utils.quote(prompt_id)}", timeout=15)
                 if r.ok:
@@ -711,7 +729,11 @@ class ComfyClient:
         wall_deadline = time.time() + 1800  # 30 min
 
         if not WEBSOCKET_AVAILABLE:
-            if not self._history_recover(comfy_url, prompt_id, final_nodes, on_image, wall_deadline):
+            recovered = self._history_recover(
+                comfy_url, prompt_id, final_nodes, on_image, wall_deadline)
+            if recovered == "cancelled":
+                self._emit(on_error, {"message": "Cancelled."})
+            elif not recovered:
                 self._emit(on_error, {"message": "Render did not complete (no websocket-client; history poll timed out)."})
             return
 
@@ -719,13 +741,20 @@ class ComfyClient:
         try:
             ws = websocket.create_connection(f"{ws_url}/ws?clientId={client_id}", timeout=600)
         except Exception:
-            if not self._history_recover(comfy_url, prompt_id, final_nodes, on_image, wall_deadline):
+            recovered = self._history_recover(
+                comfy_url, prompt_id, final_nodes, on_image, wall_deadline)
+            if recovered == "cancelled":
+                self._emit(on_error, {"message": "Cancelled."})
+            elif not recovered:
                 self._emit(on_error, {"message": "Could not open ComfyUI websocket and history poll timed out."})
             return
 
         last_node = None
         try:
             while time.time() < wall_deadline:
+                if self._cancelled():
+                    self._emit(on_error, {"message": "Cancelled."})
+                    return
                 try:
                     raw = ws.recv()
                 except Exception:
@@ -785,5 +814,12 @@ class ComfyClient:
             except Exception:
                 pass
         # Fell out of loop without an image -> try history.
-        if not self._history_recover(comfy_url, prompt_id, final_nodes, on_image, wall_deadline):
+        if self._cancelled():
+            self._emit(on_error, {"message": "Cancelled."})
+            return
+        recovered = self._history_recover(
+            comfy_url, prompt_id, final_nodes, on_image, wall_deadline)
+        if recovered == "cancelled":
+            self._emit(on_error, {"message": "Cancelled."})
+        elif not recovered:
             self._emit(on_error, {"message": "ComfyUI render timed out."})

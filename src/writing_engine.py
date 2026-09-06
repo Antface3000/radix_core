@@ -12,8 +12,14 @@ class WritingEngine:
     def __init__(self, engine):
         self.engine = engine
 
-    def _critic_review_prompt(self, critic_key: str, ctx_text: str, draft: str) -> str:
+    def _critic_review_prompt(self, critic_key: str, ctx_text: str, draft: str,
+                              prose_constraints: str = "") -> str:
         head = f"{ctx_text}\n\nDRAFT PASSAGE:\n{draft}\n\n"
+        constraints = (prose_constraints or "").strip()
+        constraint_note = (
+            "\nAlso honor these PROSE CONSTRAINTS (do not reintroduce banned "
+            "tropes or structures):\n" + constraints + "\n"
+            if constraints else "")
         if critic_key == "lore_curator":
             return (head +
                     "Canon check only. Fix factual contradictions with minimal "
@@ -25,16 +31,20 @@ class WritingEngine:
                     "Polish the draft: improve rhythm and clarity; cut filler, "
                     "cliché, and any sentence that repeats an idea or echoes "
                     "STORY SO FAR. Keep events, POV, and tense. "
+                    + constraint_note +
                     "Output ONLY the revised passage.")
         if critic_key == "pessimistic_critic":
             return (head +
                     "Critique the draft for clichés, tropes, and false notes. "
                     "Name specific lines and why they fail. "
+                    + (f"Prefer findings that violate these constraints:\n{constraints}\n"
+                       if constraints else "") +
                     "Output bullet findings only — do not rewrite the passage.")
         if critic_key == "optimistic_critic":
             return (head +
                     "Elevate the draft: sharpen mood, rhythm, and imagery while "
                     "keeping the author's intent. "
+                    + constraint_note +
                     "Output ONLY the revised passage of prose.")
         if critic_key == "horny_critic":
             return (head +
@@ -45,11 +55,14 @@ class WritingEngine:
             return (head +
                     "Match the AUTHOR VOICE SAMPLES below in diction, rhythm, "
                     "and sentence length. Do not copy sentences. "
+                    + constraint_note +
                     "Output ONLY the revised passage.\n\n"
                     + (self._voice_samples() or "(no samples yet)"))
         return (head +
                 "Revise the DRAFT PASSAGE according to your role. Do not repeat "
-                "STORY SO FAR. Output ONLY the revised passage of prose.")
+                "STORY SO FAR. "
+                + constraint_note +
+                "Output ONLY the revised passage of prose.")
 
     @property
     def settings(self):
@@ -81,13 +94,18 @@ class WritingEngine:
             use_retrieval=bool(s.get("plugins.llm", False)))
 
         gw = eng._resolve_persona(s.get("editor.write_persona", "ghostwriter"))
+        constraints = ""
+        if s.get("editor.use_prose_constraints", True):
+            constraints = (s.get("editor.prose_constraints")
+                           or story_context.DEFAULT_PROSE_CONSTRAINTS)
         system, user = story_context.build_write_prompt(
             ctx["text"],
             voice_preset=s.get("editor.voice_preset", "my"),
             style_my=s.get("editor.style_guide_my", ""),
             style_alt=s.get("editor.style_guide_alt", ""),
             direction=direction,
-            system_override=gw["system_prompt"])
+            system_override=gw["system_prompt"],
+            prose_constraints=constraints)
         max_tokens = s.get("editor.write_max_tokens", 1600)
         repeat_penalty = s.get("generation.repeat_penalty", 1.15)
         write_temp = s.get("editor.write_temperature", 0.58)
@@ -108,7 +126,8 @@ class WritingEngine:
             critic = s.persona(self.project_id, ck)
             if not critic:
                 continue
-            review_user = self._critic_review_prompt(ck, ctx["text"], draft)
+            review_user = self._critic_review_prompt(
+                ck, ctx["text"], draft, prose_constraints=constraints)
             yield ("step", critic, "Reviewing the draft")
             for _delta in eng.stream_prompt(
                     critic["model_key"], critic["system_prompt"], review_user,
@@ -123,7 +142,8 @@ class WritingEngine:
 
         if s.get("plugins.llm") and self._voice_samples():
             critic = s.persona(self.project_id, "prose_critic") or gw
-            review_user = self._critic_review_prompt("voice_lock", ctx["text"], draft)
+            review_user = self._critic_review_prompt(
+                "voice_lock", ctx["text"], draft, prose_constraints=constraints)
             yield ("step", {**critic, "display_name": "Voice lock"}, "Matching your accepted pages")
             for _delta in eng.stream_prompt(
                     critic["model_key"], critic["system_prompt"], review_user,

@@ -44,6 +44,8 @@ class VoicePanel(BasePanel):
         idx = self.engine_combo.findText(str(eng))
         if idx >= 0:
             self.engine_combo.setCurrentIndex(idx)
+        self.engine_combo.currentTextChanged.connect(
+            lambda t: self.app.settings.set("services.tts_engine", t))
         row.addWidget(QLabel("Engine:"))
         row.addWidget(self.engine_combo)
         layout.addLayout(row)

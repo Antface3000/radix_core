@@ -38,26 +38,59 @@ def run_startup_flow(window) -> None:
 
 
 def _show_welcome(window) -> None:
-    dlg = QDialog(window)
+    from ui_qt.widgets.themed_dialog import ThemedDialog
+
+    dlg = ThemedDialog(window)
     dlg.setWindowTitle(f"Welcome to {config.APP_TITLE}")
-    dlg.setMinimumWidth(420)
+    dlg.setMinimumWidth(520)
     v = QVBoxLayout(dlg)
-    v.addWidget(QLabel(
-        f"<b>{config.APP_TITLE}</b> v{config.APP_VERSION}<br><br>"
-        "This is a writing studio. Story Bible, lore, binder, and compile "
-        "work with no AI.<br><br>"
-        "Want Write/Chat, images, or speech? Open <b>Add Ons</b> on the left, "
-        "enable a pack, and use the Install buttons there.<br><br>"
-        "<b>Help</b> has the full user guide."))
+    v.setSpacing(10)
+
+    title = QLabel(f"<b>{config.APP_TITLE}</b> v{config.APP_VERSION}")
+    title.setProperty("h2", True)
+    v.addWidget(title)
+
+    body = QLabel(
+        "This is a <b>writing studio</b> first. Story Bible, lore, binder, "
+        "and compile work with <b>no AI installed</b>.<br><br>"
+        "<b>Optional Add Ons packs</b> unlock the AI toolbar buttons "
+        "(Brainstorm, Ask Agent, Summarize, Visualize, Listen) and Team.<br><br>"
+        "<b>How to turn AI on</b><br>"
+        "1. Open <b>Add Ons</b> on the left rail<br>"
+        "2. Check <b>Enable</b> on the pack you want<br>"
+        "3. Use that pack’s <b>Install</b> buttons (models / engine / Piper)<br><br>"
+        "<b>What each pack unlocks</b><br>"
+        "• <b>Local LLM</b> — Write, Chat, Brainstorm, Ask Agent, Summarize, Team<br>"
+        "• <b>Image</b> — Visualize / Image Gen (needs ComfyUI)<br>"
+        "• <b>Audio</b> — Listen / Voice (Piper or AllTalk)<br><br>"
+        "Until a pack is enabled and installed, those buttons will tell you "
+        "what to turn on. <b>Help</b> has the full guide."
+    )
+    body.setWordWrap(True)
+    body.setTextFormat(Qt.TextFormat.RichText)
+    v.addWidget(body)
+
     again = QCheckBox("Show this welcome on launch")
     again.setChecked(True)
     v.addWidget(again)
+
     row = QHBoxLayout()
+    open_addons = QPushButton("Open Add Ons")
+    open_addons.setToolTip("Enable packs and run Install from there")
+
+    def _go_addons():
+        dlg.accept()
+        window.ensure_feature("Add Ons")
+
+    open_addons.clicked.connect(_go_addons)
+    row.addWidget(open_addons)
     row.addStretch()
     ok = QPushButton("Continue")
+    ok.setDefault(True)
     ok.clicked.connect(dlg.accept)
     row.addWidget(ok)
     v.addLayout(row)
+
     dlg.exec()
     if not again.isChecked():
         window.settings.set("ui.show_welcome", False, save=True)

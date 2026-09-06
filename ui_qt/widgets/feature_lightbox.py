@@ -28,6 +28,7 @@ class FeatureLightbox(QWidget):
 
         self.setWindowTitle(feature_name)
         self.setObjectName("FeatureLightbox")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMinimumSize(340, 400)
         w, h = self._default_size()
         self.resize(w, h)

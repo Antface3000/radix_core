@@ -39,6 +39,7 @@ from ui_qt.stream_throttle import StreamThrottler
 from ui_qt.workers import AgentWorker, PlanWorker
 from ui_qt.widgets.activity_indicator import ActivityStatus
 from ui_qt.widgets.auto_scroll import make_auto_scroll_checkbox, scroll_to_end
+from ui_qt.widgets.flow_layout import FlowLayout
 
 log = get_logger("team")
 
@@ -120,7 +121,8 @@ class TeamPanel(BasePanel):
         split.addWidget(self.event_log)
         layout.addWidget(split, 1)
 
-        util_row = QHBoxLayout()
+        util = QWidget()
+        util_row = FlowLayout(util, hspacing=6, vspacing=4)
         capture_btn = QPushButton("Capture from text…")
         capture_btn.setProperty("secondary", True)
         capture_btn.clicked.connect(self._capture_from_text)
@@ -133,8 +135,7 @@ class TeamPanel(BasePanel):
         preview_btn.setProperty("secondary", True)
         preview_btn.clicked.connect(self._preview_setting)
         util_row.addWidget(preview_btn)
-        util_row.addStretch()
-        layout.addLayout(util_row)
+        layout.addWidget(util)
 
         bottom = QHBoxLayout()
         self.entry = QLineEdit()

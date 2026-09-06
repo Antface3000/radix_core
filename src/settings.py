@@ -23,6 +23,7 @@ import os
 
 import config
 from src import personas, projects
+from src.story_context import DEFAULT_PROSE_CONSTRAINTS
 
 # Persona fields the dashboard is allowed to override per agent.
 AGENT_OVERRIDE_FIELDS = ("model_key", "temperature", "max_tokens",
@@ -106,6 +107,9 @@ DEFAULT_GLOBAL = {
         "voice_preset": "my",          # my | alt | neutral (UI: My Style / Alt Style / Neutral Style)
         "style_guide_my": "",
         "style_guide_alt": "",
+        # Hard rules for Editor → Write (and prose rewrite critics).
+        "use_prose_constraints": True,
+        "prose_constraints": DEFAULT_PROSE_CONSTRAINTS,
         # Write pipeline (Ghostwriter draft -> critics review).
         "write_persona": "ghostwriter",
         "write_critics": ["prose_critic"],

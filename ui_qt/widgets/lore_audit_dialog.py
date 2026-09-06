@@ -5,10 +5,11 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-    QPushButton, QComboBox, QMessageBox,
+    QPushButton, QComboBox, QMessageBox, QWidget,
 )
 
 from src import lore_audit
+from ui_qt.widgets.flow_layout import FlowLayout
 
 
 class LoreAuditDialog(QDialog):
@@ -37,10 +38,12 @@ class LoreAuditDialog(QDialog):
         layout.addLayout(row)
 
         self.issue_list = QListWidget()
-        self.issue_list.itemDoubleClicked.connect(self._jump)
+        self.issue_list.setToolTip("Click an issue to open that lore entry.")
+        self.issue_list.itemClicked.connect(self._jump)
         layout.addWidget(self.issue_list, 1)
 
-        btn_row = QHBoxLayout()
+        footer = QWidget()
+        btn_row = FlowLayout(footer, hspacing=6, vspacing=4)
         self.fix_btn = QPushButton(f"Apply fixes ({len(fixable)})")
         self.fix_btn.setEnabled(bool(fixable))
         self.fix_btn.clicked.connect(self._apply_fixes)
@@ -49,11 +52,10 @@ class LoreAuditDialog(QDialog):
         rerun.setProperty("secondary", True)
         rerun.clicked.connect(self._rerun)
         btn_row.addWidget(rerun)
-        btn_row.addStretch()
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
         btn_row.addWidget(close_btn)
-        layout.addLayout(btn_row)
+        layout.addWidget(footer)
 
         self._populate()
 

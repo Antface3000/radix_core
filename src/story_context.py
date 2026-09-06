@@ -28,6 +28,33 @@ DEFAULT_WRITE_SYSTEM = (
 _NEUTRAL_VOICE = ("Write clear, grounded literary prose. Vary sentence rhythm; "
                   "avoid cliche and purple excess.")
 
+# Default Editor → Write hard rules (editable in Settings → Editor AI).
+DEFAULT_PROSE_CONSTRAINTS = """[NARRATIVE EXECUTION & CONSTRAINTS]
+1. SENTENCE STRUCTURE & PACING:
+- Vary rhythm naturally within full paragraphs. Strictly forbid isolated one-sentence paragraphs used for dramatic effect or theatrical punch.
+- Ban the movie-trailer crescendo. Never stack staccato sentences or end scenes with defiant one-liners (e.g., "So let them come," "Starts now," "The real fight begins").
+- End scenes mid-motion on physical friction: an unfinished manual task, mechanical noise, ambient fatigue, or environmental grit. Do not write retrospective summaries or thematic wrap-ups.
+
+2. RHETORIC & DIALOGUE:
+- Ban balanced antithesis and false dichotomies ("Not X, but Y", "X dressed up as Y").
+- Ban aphoristic sententiousness, fortune-cookie philosophizing, and prepared villain/hero monologues.
+- Dialogue must serve immediate tactical or functional purposes. Keep it unpolished, broken, and natural.
+
+3. SENSORY & PHYSICAL DETAILS:
+- Avoid stock genre collocations. Banned descriptors: "ozone," "metallic tang of copper/iron," "sour bile," "ammonia."
+- When rendering bodily trauma or dystopian atmospheres, ground the sensory details in concrete, mundane mechanics: burnt motor oil, scorched flux, wet dust, stale plastic, diesel exhaust, clotting grease, or dull pressure.
+- Forbid sensory triads (no "tasted of blood, bile, and ash" or "cold, dark, and merciless"). Give the sensory focus to a single, overwhelming physical reaction.
+
+4. BANNED PHYSICAL CLICHÉS & AI CRUTCHES:
+- Forbid the following reactive tropes: releasing a breath they didn't know they were holding; swallows hard / throat bobbing; eyes widening or narrowing to slits; jaw muscle ticking; smirking; resting a hand on a weapon needlessly.
+- Character mannerisms and nervous tics (e.g., clutching a necklace, tapping fingers) must occur at most once across an entire narrative chapter, never as an automated cue for tension. Vary physiological stress (sweat-slick grip, numb extremities, shallow ribs, dry tongue) rather than recycling prop pantomime.
+
+[GLOBAL PROSE CONSTRAINTS - ANTI-TROPE FILTER]
+- ANTI-SUMMARIZATION: Never explain the "thematic weight" of an action to the reader. Show the physical consequence and immediately move forward. Do not use the final 50 words of a beat to preach the moral of the scene.
+- CAUSE AND EFFECT: Violence and body horror must have mechanical weight and lasting inconvenience. Broken tissue impedes movement; damaged machinery does not spark dramatically on cue—it stalls, smokes, or fails outright.
+- PSYCHOLOGICAL GRIT: Replace rhetorical anger with pragmatic fatigue. Do not substitute gratuitous profanity into literary syntax to simulate grit. Grit comes from low resources, dirty work, stubborn survival, and cold necessity.
+- CHARACTER TIC GOVERNOR: Distinct character physical habits (touching talismans, scars, or jewelry) are governed by strict conservation. The model is prohibited from triggering these actions every time high tension is flagged."""
+
 # Budgets (characters).
 _BIBLE_CHARS = 2400
 _OUTLINE_CHARS = 1000
@@ -233,7 +260,8 @@ def build_story_context(paths, before_cursor="", chapter_id=None, author_note=""
 
 
 def build_write_prompt(context_text, voice_preset="my", style_my="",
-                       style_alt="", direction="", system_override=""):
+                       style_alt="", direction="", system_override="",
+                       prose_constraints=""):
     system = system_override or DEFAULT_WRITE_SYSTEM
     if voice_preset == "my" and style_my.strip():
         system += "\n\nVOICE / STYLE (write in this voice):\n" + style_my.strip()
@@ -241,6 +269,9 @@ def build_write_prompt(context_text, voice_preset="my", style_my="",
         system += "\n\nVOICE / STYLE (write in this voice):\n" + style_alt.strip()
     elif voice_preset == "neutral":
         system += "\n\nVOICE / STYLE:\n" + _NEUTRAL_VOICE
+    constraints = (prose_constraints or "").strip()
+    if constraints:
+        system += "\n\nPROSE CONSTRAINTS (mandatory — never violate):\n" + constraints
 
     user = context_text + "\n\nContinue the narrative naturally from the end of "
     user += "STORY SO FAR. Write the next passage only — new prose that moves "
@@ -250,6 +281,8 @@ def build_write_prompt(context_text, voice_preset="my", style_my="",
         "Do not restate the same beat twice. Stop when the passage feels complete "
         "rather than padding length."
     )
+    if constraints:
+        user += "\nHonor PROSE CONSTRAINTS in the system message above."
     if direction.strip():
         user += "\n\nOPTIONAL DIRECTION (incorporate): " + direction.strip()
     return system, user

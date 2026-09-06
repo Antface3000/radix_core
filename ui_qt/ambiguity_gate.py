@@ -36,7 +36,7 @@ def run_ambiguity_gate(
         box.exec()
         clicked = box.clickedButton()
         if clicked == open_btn:
-            app.show_feature("Story Bible")
+            app.ensure_feature("Story Bible")
             return False, prompt
         if clicked != proceed_btn:
             return False, prompt

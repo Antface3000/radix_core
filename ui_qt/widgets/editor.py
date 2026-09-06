@@ -5,12 +5,12 @@ from __future__ import annotations
 import config
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import (
-    QAction, QColor, QFont, QKeySequence, QShortcut, QTextCharFormat,
+    QColor, QFont, QKeySequence, QShortcut, QTextCharFormat,
     QTextCursor, QTextDocument,
 )
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QComboBox,
-    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSpinBox,
     QSplitter,
-    QToolBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +33,8 @@ from src import chapters, export as export_mod, story_context
 from src.plugins import is_enabled
 from ui_qt.ambiguity_gate import run_ambiguity_gate
 from ui_qt.stream_throttle import StreamThrottler
+from ui_qt.theme import get_open_file_name, get_save_file_name
+from ui_qt.widgets.flow_layout import FlowLayout
 from ui_qt.widgets.spellcheck import SpellCheckService, SpellReplaceBar, skip_spellcheck
 from ui_qt.widgets.binder import BinderWidget
 from ui_qt.widgets.activity_indicator import ActivityStatus
@@ -80,66 +82,70 @@ class EditorWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        self.toolbar = QToolBar()
+        self.toolbar = QWidget()
+        self.toolbar.setObjectName("EditorToolbar")
+        tb = FlowLayout(self.toolbar, margin=4, hspacing=4, vspacing=4)
         layout.addWidget(self.toolbar)
 
+        def _tb_btn(text: str, slot, tip: str = "") -> QPushButton:
+            btn = QPushButton(text)
+            btn.setProperty("secondary", True)
+            if tip:
+                btn.setToolTip(tip)
+            btn.clicked.connect(slot)
+            tb.addWidget(btn)
+            return btn
+
         self.chapter_combo = QComboBox()
-        self.chapter_combo.setMinimumWidth(160)
+        self.chapter_combo.setMinimumWidth(120)
+        self.chapter_combo.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.chapter_combo.currentIndexChanged.connect(self._on_chapter_changed)
-        self.toolbar.addWidget(QLabel("Chapter:"))
-        self.toolbar.addWidget(self.chapter_combo)
+        tb.addWidget(QLabel("Chapter:"))
+        tb.addWidget(self.chapter_combo)
 
-        new_act = QAction("New", self)
-        new_act.setToolTip("Create a new chapter")
-        new_act.triggered.connect(self._new_chapter)
-        self.toolbar.addAction(new_act)
+        _tb_btn("New", self._new_chapter, "Create a new chapter")
+        _tb_btn("Rename", self._rename_chapter, "Rename the current chapter")
+        _tb_btn("Delete", self._delete_chapter, "Delete the current chapter")
+        _tb_btn("Find", self._open_find, "Find in this chapter (Ctrl+F)")
 
-        rename_act = QAction("Rename", self)
-        rename_act.setToolTip("Rename the current chapter")
-        rename_act.triggered.connect(self._rename_chapter)
-        self.toolbar.addAction(rename_act)
-
-        del_act = QAction("Delete", self)
-        del_act.setToolTip("Delete the current chapter")
-        del_act.triggered.connect(self._delete_chapter)
-        self.toolbar.addAction(del_act)
-
-        self.toolbar.addSeparator()
-        self.find_entry = QLineEdit()
-        self.find_entry.setPlaceholderText("Find...")
-        self.find_entry.setMaximumWidth(140)
-        self.find_entry.returnPressed.connect(self._find_next)
-        self.toolbar.addWidget(self.find_entry)
-        self.find_case = QCheckBox("Aa")
-        self.find_case.setToolTip("Match case")
-        self.find_case.toggled.connect(self._sync_find_settings)
-        self.toolbar.addWidget(self.find_case)
-        self.find_whole = QCheckBox("Word")
-        self.find_whole.setToolTip("Whole words only")
-        self.find_whole.toggled.connect(self._sync_find_settings)
-        self.toolbar.addWidget(self.find_whole)
-        self.find_regex = QCheckBox(".*")
-        self.find_regex.setToolTip("Regular expression")
-        self.find_regex.toggled.connect(self._sync_find_settings)
-        self.toolbar.addWidget(self.find_regex)
+        from ui_qt.widgets.find_lightbox import FindLightbox
+        self._find_box = FindLightbox(self)
+        self.find_entry = self._find_box.entry
+        self.find_case = self._find_box.case
+        self.find_whole = self._find_box.whole
+        self.find_regex = self._find_box.regex
         self._load_find_settings()
-        find_prev = QAction("◀", self)
-        find_prev.setToolTip("Previous match")
-        find_prev.triggered.connect(self._find_prev)
-        self.toolbar.addAction(find_prev)
-        find_next = QAction("▶", self)
-        find_next.setToolTip("Next match")
-        find_next.triggered.connect(self._find_next)
-        self.toolbar.addAction(find_next)
+        self._find_box.hide()
 
-        self.toolbar.addSeparator()
+        size_wrap = QWidget()
+        size_wrap.setObjectName("FontSizeStepper")
+        size_row = QHBoxLayout(size_wrap)
+        size_row.setContentsMargins(0, 0, 0, 0)
+        size_row.setSpacing(2)
+        size_row.addWidget(QLabel("Size:"))
         self.font_size_spin = QSpinBox()
         self.font_size_spin.setRange(8, 72)
         self.font_size_spin.setValue(_resolve_editor_font_size(self.app.settings))
         self.font_size_spin.setToolTip("Editor font size")
+        self.font_size_spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.font_size_spin.setFixedWidth(48)
+        self.font_size_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.font_size_spin.valueChanged.connect(self._on_font_size)
-        self.toolbar.addWidget(QLabel("Size:"))
-        self.toolbar.addWidget(self.font_size_spin)
+        minus = QToolButton()
+        minus.setObjectName("SpinStepBtn")
+        minus.setText("−")
+        minus.setToolTip("Smaller text")
+        minus.clicked.connect(self.font_size_spin.stepDown)
+        plus = QToolButton()
+        plus.setObjectName("SpinStepBtn")
+        plus.setText("+")
+        plus.setToolTip("Larger text")
+        plus.clicked.connect(self.font_size_spin.stepUp)
+        size_row.addWidget(minus)
+        size_row.addWidget(self.font_size_spin)
+        size_row.addWidget(plus)
+        tb.addWidget(size_wrap)
 
         export_menu = QMenu("Export", self)
         export_ch = export_menu.addAction("Export current chapter...")
@@ -154,46 +160,33 @@ class EditorWidget(QWidget):
         export_epub.triggered.connect(self._compile_epub)
         export_bible = export_menu.addAction("Production bible (markdown)...")
         export_bible.triggered.connect(self._export_production_bible)
-        export_btn = QPushButton("Export ▾")
+        export_btn = QPushButton("Export")
         export_btn.setMenu(export_menu)
-        self.toolbar.addWidget(export_btn)
+        export_btn.setToolTip("Export or compile the manuscript")
+        tb.addWidget(export_btn)
 
-        search_act = QAction("Search", self)
-        search_act.setToolTip("Search the whole project")
-        search_act.triggered.connect(self._open_project_search)
-        self.toolbar.addAction(search_act)
-        import_act = QAction("Import", self)
-        import_act.setToolTip("Import Markdown or DOCX as a chapter")
-        import_act.triggered.connect(self._import_doc)
-        self.toolbar.addAction(import_act)
-        snap_act = QAction("Snapshots", self)
-        snap_act.triggered.connect(self._open_snapshots)
-        self.toolbar.addAction(snap_act)
-        notes_act = QAction("Notes", self)
-        notes_act.setToolTip("Fix-later notes — not sent to the LLM unless you opt in")
-        notes_act.triggered.connect(self._open_notes)
-        self.toolbar.addAction(notes_act)
+        _tb_btn("Search", self._open_project_search, "Search the whole project")
+        _tb_btn("Import", self._import_doc, "Import Markdown or DOCX as a chapter")
+        _tb_btn("Snapshots", self._open_snapshots)
+        _tb_btn(
+            "Notes", self._open_notes,
+            "Fix-later notes — not sent to the LLM unless you opt in")
 
-        self.toolbar.addSeparator()
-        self.act_brainstorm = QAction("Brainstorm", self)
-        self.act_brainstorm.triggered.connect(self._run_brainstorm)
-        self.toolbar.addAction(self.act_brainstorm)
-        self.act_ask = QAction("Ask Agent", self)
-        self.act_ask.triggered.connect(self._ask_agent)
-        self.toolbar.addAction(self.act_ask)
-        self.act_visualize = QAction("Visualize", self)
-        self.act_visualize.triggered.connect(self._visualize)
-        self.toolbar.addAction(self.act_visualize)
-        self.act_listen = QAction("Listen", self)
-        self.act_listen.triggered.connect(self._listen)
-        self.toolbar.addAction(self.act_listen)
-
-        summarize_act = QAction("Summarize", self)
-        summarize_act.setToolTip(
-            "Store a compact recap of this chapter; it feeds the PREVIOUSLY "
-            "section when writing later chapters")
-        summarize_act.triggered.connect(self._summarize_chapter)
-        self.toolbar.addAction(summarize_act)
+        self.btn_brainstorm = _tb_btn(
+            "Brainstorm", self._run_brainstorm,
+            "Generate ideas for the current chapter (needs Local LLM pack)")
+        self.btn_ask = _tb_btn(
+            "Ask Agent", self._ask_agent,
+            "Open Team with your selection or prompt (needs Local LLM pack)")
+        self.btn_visualize = _tb_btn(
+            "Visualize", self._visualize,
+            "Send selection to Image Gen (needs Image pack)")
+        self.btn_listen = _tb_btn(
+            "Listen", self._listen,
+            "Speak selection aloud (needs Audio pack)")
+        self.btn_summarize = _tb_btn(
+            "Summarize", self._summarize_chapter,
+            "Store a compact recap of this chapter for PREVIOUSLY (needs Local LLM pack)")
 
         self.editor = QPlainTextEdit()
         font = QFont(
@@ -229,22 +222,43 @@ class EditorWidget(QWidget):
             lambda on: self.app.settings.set("editor.include_notes_in_ai", bool(on)))
 
         meta = QWidget()
-        meta_l = QHBoxLayout(meta)
-        meta_l.setContentsMargins(4, 0, 4, 0)
+        meta.setObjectName("ChapterMetaBar")
+        meta_l = FlowLayout(meta, margin=4, hspacing=8, vspacing=4)
+
         self.status_combo = QComboBox()
         self.status_combo.addItems(["draft", "revise", "done"])
+        self.status_combo.setToolTip("Chapter writing status (shown in the binder)")
         self.status_combo.currentTextChanged.connect(self._save_chapter_meta)
+
         self.pov_edit = QLineEdit()
-        self.pov_edit.setPlaceholderText("POV")
+        self.pov_edit.setPlaceholderText("Who is narrating?")
+        self.pov_edit.setMaximumWidth(150)
+        self.pov_edit.setToolTip("Point of view for this chapter — stored on the binder card")
         self.pov_edit.editingFinished.connect(self._save_chapter_meta)
+
         self.loc_edit = QLineEdit()
-        self.loc_edit.setPlaceholderText("Location")
+        self.loc_edit.setPlaceholderText("Where is this set?")
+        self.loc_edit.setMaximumWidth(160)
+        self.loc_edit.setToolTip("Scene location for this chapter — stored on the binder card")
         self.loc_edit.editingFinished.connect(self._save_chapter_meta)
+
         self.date_edit = QLineEdit()
-        self.date_edit.setPlaceholderText("Story date")
+        self.date_edit.setPlaceholderText("In-story date")
+        self.date_edit.setMaximumWidth(140)
+        self.date_edit.setToolTip("Story-world date for this chapter — stored on the binder card")
         self.date_edit.editingFinished.connect(self._save_chapter_meta)
+
         self.split_combo = QComboBox()
-        self.split_combo.addItems(["Split: off", "Split: Story Bible", "Split: Lore", "Split: other chapter"])
+        self.split_combo.addItems([
+            "Off",
+            "Story Bible",
+            "Lorebook",
+            "Other chapter",
+        ])
+        self.split_combo.setToolTip(
+            "Open a read-only side pane beside the manuscript so you can "
+            "check Story Bible, lore, or another chapter while writing. "
+            "Does not split or change the chapter file.")
         try:
             self.split_combo.setCurrentIndex(int(self.app.settings.get("editor.split_mode", 0) or 0))
         except (TypeError, ValueError):
@@ -252,15 +266,26 @@ class EditorWidget(QWidget):
         self.split_combo.currentIndexChanged.connect(self._apply_split)
         self.split_combo.currentIndexChanged.connect(
             lambda i: self.app.settings.set("editor.split_mode", int(i)))
-        meta_l.addWidget(QLabel("Status"))
+
+        def _meta_label(text: str, tip: str = "") -> QLabel:
+            lbl = QLabel(text)
+            lbl.setProperty("muted", True)
+            if tip:
+                lbl.setToolTip(tip)
+            return lbl
+
+        meta_l.addWidget(_meta_label("Status", "Chapter writing status"))
         meta_l.addWidget(self.status_combo)
+        meta_l.addWidget(_meta_label("POV", self.pov_edit.toolTip()))
         meta_l.addWidget(self.pov_edit)
+        meta_l.addWidget(_meta_label("Location", self.loc_edit.toolTip()))
         meta_l.addWidget(self.loc_edit)
+        meta_l.addWidget(_meta_label("Date", self.date_edit.toolTip()))
         meta_l.addWidget(self.date_edit)
+        side_lbl = _meta_label("Side view", self.split_combo.toolTip())
+        meta_l.addWidget(side_lbl)
         meta_l.addWidget(self.split_combo)
         meta_l.addWidget(self.include_notes_cb)
-        meta_l.addStretch()
-
         manuscript = QWidget()
         mv = QVBoxLayout(manuscript)
         mv.setContentsMargins(0, 0, 0, 0)
@@ -277,8 +302,8 @@ class EditorWidget(QWidget):
 
         self.continuity_list = QListWidget()
         self.continuity_list.setMaximumHeight(72)
-        self.continuity_list.setToolTip("Live continuity (lore audit). Double-click to jump.")
-        self.continuity_list.itemDoubleClicked.connect(self._jump_continuity)
+        self.continuity_list.setToolTip("Live continuity (lore audit). Click to jump to the entry.")
+        self.continuity_list.itemClicked.connect(self._jump_continuity)
         self.continuity_list.hide()
 
         split = QSplitter(Qt.Horizontal)
@@ -312,11 +337,10 @@ class EditorWidget(QWidget):
 
     def _build_draft_bar(self, layout):
         self.draft_bar = QWidget()
-        row = QHBoxLayout(self.draft_bar)
-        row.setContentsMargins(4, 2, 4, 2)
+        row = FlowLayout(self.draft_bar, margin=4, hspacing=6, vspacing=4)
         self.draft_label = QLabel("AI draft pending")
         self.draft_label.setProperty("muted", True)
-        row.addWidget(self.draft_label, 1)
+        row.addWidget(self.draft_label)
         self.draft_changes_btn = QPushButton("View changes")
         self.draft_changes_btn.setProperty("secondary", True)
         self.draft_changes_btn.setToolTip(
@@ -326,7 +350,8 @@ class EditorWidget(QWidget):
         row.addWidget(self.draft_changes_btn)
         self.refine_entry = QLineEdit()
         self.refine_entry.setPlaceholderText("Refine: e.g. less dialogue, slower pace…")
-        self.refine_entry.setMaximumWidth(240)
+        self.refine_entry.setMinimumWidth(140)
+        self.refine_entry.setMaximumWidth(280)
         self.refine_entry.returnPressed.connect(self._refine_ai)
         row.addWidget(self.refine_entry)
         refine_btn = QPushButton("Refine")
@@ -359,6 +384,7 @@ class EditorWidget(QWidget):
 
         add("Ctrl+Return", self._run_ai)
         add("Ctrl+Enter", self._run_ai)
+        add("Ctrl+F", self._open_find)
         esc = QShortcut(QKeySequence("Esc"), self)
         esc.setContext(Qt.WidgetWithChildrenShortcut)
         esc.activated.connect(self._on_escape)
@@ -488,9 +514,13 @@ class EditorWidget(QWidget):
         self.style_preset.setToolTip("Voice/style preset for Write mode")
         v.addWidget(self.style_preset)
         self.ghost_cb = QCheckBox("Ghost text (inline)")
+        # Rich tip so Qt wraps instead of clipping a single long line.
         self.ghost_cb.setToolTip(
-            "Stream the Write result directly into the manuscript as grey "
-            "provisional text — Tab to accept, Esc to dismiss.")
+            "<p style='white-space:pre-wrap; max-width:280px;'>"
+            "Stream the Write result into the manuscript as grey provisional "
+            "text.<br/><br/>"
+            "<b>Tab</b> accept · <b>Esc</b> dismiss"
+            "</p>")
         self.ghost_cb.setChecked(
             bool(self.app.settings.get("editor.ghost_text", False)))
         self.ghost_cb.toggled.connect(
@@ -516,7 +546,8 @@ class EditorWidget(QWidget):
         v.addLayout(scroll_row)
         self.ai_status = ActivityStatus("")
         v.addWidget(self.ai_status)
-        row = QHBoxLayout()
+        ai_tools = QWidget()
+        row = FlowLayout(ai_tools, hspacing=6, vspacing=4)
         self.ai_run = QPushButton("Run")
         self.ai_run.clicked.connect(self._run_ai)
         self.ai_stop = QPushButton("Stop")
@@ -535,7 +566,7 @@ class EditorWidget(QWidget):
         row.addWidget(self.ai_stop)
         row.addWidget(self.ai_accept)
         row.addWidget(self.team_btn)
-        v.addLayout(row)
+        v.addWidget(ai_tools)
 
     def _on_ai_mode_changed(self, mode: str):
         self.ai_mode.setToolTip(EDITOR_MODE_TIPS.get(mode, ""))
@@ -716,6 +747,9 @@ class EditorWidget(QWidget):
     def _voice_preset_key(self) -> str:
         return ("my", "alt", "neutral")[self.style_preset.currentIndex()]
 
+    def _open_find(self):
+        self._find_box.present()
+
     def _find_next(self):
         self._run_find(forward=True)
 
@@ -786,7 +820,7 @@ class EditorWidget(QWidget):
         if not paths or not self._chapter_id:
             return
         self.flush()
-        path, _filt = QFileDialog.getSaveFileName(
+        path, _filt = get_save_file_name(
             self, "Export chapter", "", "Text (*.txt);;Markdown (*.md)")
         if not path:
             return
@@ -801,7 +835,7 @@ class EditorWidget(QWidget):
         if not paths:
             return
         self.flush()
-        path, _filt = QFileDialog.getSaveFileName(
+        path, _filt = get_save_file_name(
             self, "Compile manuscript", "", "Text (*.txt);;Markdown (*.md)")
         if not path:
             return
@@ -816,7 +850,7 @@ class EditorWidget(QWidget):
         if not paths:
             return
         self.flush()
-        path, _f = QFileDialog.getSaveFileName(
+        path, _f = get_save_file_name(
             self, "Standard manuscript", "", "Text (*.txt)")
         if not path:
             return
@@ -832,7 +866,7 @@ class EditorWidget(QWidget):
         if not paths:
             return
         self.flush()
-        path, _f = QFileDialog.getSaveFileName(
+        path, _f = get_save_file_name(
             self, "Compile DOCX", "", "Word (*.docx)")
         if not path:
             return
@@ -847,7 +881,7 @@ class EditorWidget(QWidget):
         if not paths:
             return
         self.flush()
-        path, _f = QFileDialog.getSaveFileName(
+        path, _f = get_save_file_name(
             self, "Compile EPUB", "", "EPUB (*.epub)")
         if not path:
             return
@@ -862,7 +896,7 @@ class EditorWidget(QWidget):
         paths = self.app.engine.paths
         if not paths:
             return
-        path, _f = QFileDialog.getSaveFileName(
+        path, _f = get_save_file_name(
             self, "Production bible", "", "Markdown (*.md)")
         if not path:
             return
@@ -896,8 +930,13 @@ class EditorWidget(QWidget):
         self._refresh_continuity()
 
     def _run_ai(self):
-        if self._ai_worker and self._ai_worker.isRunning():
+        if not is_enabled(self.app.settings, "llm"):
+            self.app.show_toast("Enable the Local LLM pack in Add Ons.", error=True)
             return
+        if self._ai_worker and self._ai_worker.isRunning():
+            self.app.show_toast("AI is busy — try again after the current run.", error=True)
+            return
+        self._ensure_ai_surface()
         prompt = self.ai_prompt.toPlainText().strip()
         mode = self.ai_mode.currentText().lower()
         check_prompt = prompt or f"Editor {mode} on current chapter"
@@ -1048,19 +1087,32 @@ class EditorWidget(QWidget):
             persona = a if isinstance(a, dict) else {}
             name = persona.get("display_name", "Agent")
             self.ai_status.set_status(f"{name} finished.", active=True)
+        elif kind == "error":
+            msg = str(b or a or "AI run failed")
+            self.ai_status.set_status(msg, active=False)
+            self.app.show_toast(msg, error=True)
 
-    def _summarize_chapter(self, *, chapter_id: str | None = None):
+    def _summarize_chapter(self, chapter_id: str | None = None):
         """Run the Session Summarizer on a chapter and store the recap."""
+        if not is_enabled(self.app.settings, "llm"):
+            self.app.show_toast("Enable the Local LLM pack in Add Ons.", error=True)
+            return
         if self._ai_worker and self._ai_worker.isRunning():
             self.app.show_toast("AI is busy — try again after the current run.", error=True)
             return
         if getattr(self, "_summary_worker", None) and self._summary_worker.isRunning():
+            self.app.show_toast("A summary is already running.")
             return
         paths = self.app.engine.paths
         if not paths:
+            self.app.show_toast("Open a project first.", error=True)
             return
+        # Ignore accidental bool from old QAction wiring if anything still passes one.
+        if isinstance(chapter_id, bool):
+            chapter_id = None
         cid = chapter_id or self._chapter_id
         if not cid:
+            self.app.show_toast("Select a chapter first.", error=True)
             return
         if cid == self._chapter_id:
             text = self.editor.toPlainText().strip()
@@ -1068,11 +1120,13 @@ class EditorWidget(QWidget):
             try:
                 text = chapters.read(paths["chapters"], cid)["content"].strip()
             except Exception:
+                self.app.show_toast("Could not read that chapter.", error=True)
                 return
         if not text:
             self.app.show_toast("Chapter is empty — nothing to summarize.", error=True)
             return
 
+        self._ensure_ai_surface()
         persona = self.app.engine._resolve_persona("chat_historian") or {}
         model_key = persona.get("model_key", "operator")
         system = (
@@ -1089,6 +1143,8 @@ class EditorWidget(QWidget):
 
         self._summary_buffer = ""
         self.ai_status.set_status("Summarizing chapter…", active=True)
+        self.app.show_toast("Summarizing chapter…")
+        self.app.engine.clear_cancel()
         self._summary_worker = EditorAiWorker(self.app.engine, stream_fn)
         self._summary_worker.delta.connect(
             self._on_summary_delta, Qt.ConnectionType.QueuedConnection)
@@ -1173,7 +1229,7 @@ class EditorWidget(QWidget):
             else:
                 self.editor.setFocus()
                 self.ai_status.set_status(
-                    "Ghost text ready — Tab to accept, Esc to dismiss",
+                    "Ghost text ready — Tab accept · Esc dismiss",
                     active=False)
             return
         if text:
@@ -1258,7 +1314,8 @@ class EditorWidget(QWidget):
             return
         from src import snapshots
         snapshots.take_snapshot(
-            paths, self._chapter_id, self.editor.toPlainText(), reason="auto")
+            paths, self._chapter_id, self.editor.toPlainText(), reason="timed",
+            chapter_name=self.chapter_combo.currentText())
 
     def _maybe_restore_crash(self):
         paths = self.app.engine.paths
@@ -1372,18 +1429,21 @@ class EditorWidget(QWidget):
     def apply_plugin_chrome(self):
         s = self.app.settings
         llm = is_enabled(s, "llm")
-        image = is_enabled(s, "image")
-        audio = is_enabled(s, "audio")
-        self.act_brainstorm.setVisible(llm)
-        self.act_ask.setVisible(llm)
-        self.act_visualize.setVisible(image)
-        self.act_listen.setVisible(audio)
+        # Keep Brainstorm / Ask / Summarize / Visualize / Listen visible so the
+        # toolbar doesn't empty out when packs are off — clicks explain how to enable.
+        self.btn_brainstorm.setVisible(True)
+        self.btn_ask.setVisible(True)
+        self.btn_visualize.setVisible(True)
+        self.btn_listen.setVisible(True)
+        self.btn_summarize.setVisible(True)
         self.ai_dock.setVisible(llm and not s.get("editor.focus_mode", False))
         self.team_btn.setVisible(llm)
         self.continuity_list.setVisible(llm)
-        for act in self.toolbar.actions():
-            if act.text() == "Summarize":
-                act.setVisible(llm)
+        lay = self.toolbar.layout()
+        if lay is not None:
+            lay.invalidate()
+        self.toolbar.updateGeometry()
+        self.toolbar.adjustSize()
 
     def _refresh_continuity(self):
         if not is_enabled(self.app.settings, "llm"):
@@ -1430,7 +1490,7 @@ class EditorWidget(QWidget):
         paths = self.app.engine.paths
         if not paths:
             return
-        path, _f = QFileDialog.getOpenFileName(
+        path, _f = get_open_file_name(
             self, "Import chapter", "",
             "Documents (*.md *.markdown *.txt *.docx)")
         if not path:
@@ -1441,23 +1501,41 @@ class EditorWidget(QWidget):
         self._select_chapter_id(created["id"])
         self.app.show_toast(f"Imported {created['name']}")
 
+    def _ensure_ai_surface(self):
+        """Show the Write/Chat dock so toolbar AI actions have somewhere to land."""
+        if getattr(self, "ai_dock", None) is None:
+            return
+        if self.app.settings.get("editor.focus_mode", False):
+            self.app.settings.set("editor.focus_mode", False, save=True)
+            self.apply_qol()
+        self.ai_dock.setVisible(True)
+
     def _run_brainstorm(self):
         if not is_enabled(self.app.settings, "llm"):
+            self.app.show_toast("Enable the Local LLM pack in Add Ons.", error=True)
             return
         if self._ai_worker and self._ai_worker.isRunning():
+            self.app.show_toast("AI is busy — try again after the current run.", error=True)
             return
+        self._ensure_ai_surface()
+        self.ai_mode.setCurrentText("Chat")
         prompt = self.ai_prompt.toPlainText().strip()
         recent = self.editor.toPlainText()[-2000:]
         selection = self._selected_text()
         self.ai_output.clear()
+        self._ai_buffer = ""
+        self._stage_drafts = []
+        self._pipeline_step = 0
         self.ai_run.setEnabled(False)
         self.ai_stop.setEnabled(True)
         self.ai_status.set_status("Brainstorm…", active=True)
+        self.app.show_toast("Brainstorming in the AI dock…")
 
         def pipeline_fn():
             yield from self.app.writing.editor_brainstorm(
                 recent, selection=selection, instruction=prompt)
 
+        self.app.engine.clear_cancel()
         self._ai_worker = EditorPipelineWorker(self.app.engine, pipeline_fn)
         self._ai_worker.event.connect(
             self._on_pipeline_event, Qt.ConnectionType.QueuedConnection)
@@ -1467,9 +1545,11 @@ class EditorWidget(QWidget):
 
     def _ask_agent(self):
         if not is_enabled(self.app.settings, "llm"):
+            self.app.show_toast("Enable the Local LLM pack in Add Ons.", error=True)
             return
         text = self._selected_text() or self.ai_prompt.toPlainText().strip()
         self.app.open_team(text or "Help me with this scene.", mode="single")
+        self.app.show_toast("Opened Team — Specialist.")
 
     def _visualize(self):
         if not is_enabled(self.app.settings, "image"):
@@ -1477,8 +1557,9 @@ class EditorWidget(QWidget):
             return
         text = self._selected_text() or self.editor.toPlainText()[-800:]
         if not text.strip():
+            self.app.show_toast("Select text or write some prose first.", error=True)
             return
-        self.app.show_feature("Image Gen")
+        self.app.ensure_feature("Image Gen", keep_others=True)
         panel = self.app._panels.get("Image Gen")
         if panel and hasattr(panel, "prompt"):
             panel.prompt.setPlainText(text.strip())
@@ -1490,6 +1571,7 @@ class EditorWidget(QWidget):
             return
         text = self._selected_text() or self.editor.toPlainText()[-1200:]
         if not text.strip():
+            self.app.show_toast("Select text or write some prose first.", error=True)
             return
         try:
             self.app.tts.speak(text)

@@ -3,6 +3,7 @@
 CLI:
     python scripts/download_models.py
     python scripts/download_models.py --keys architect
+    python scripts/download_models.py --force
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
+from src.pack_install import gguf_status
 
 MODELS_DIR = config.MODELS_DIR
 
@@ -55,12 +57,29 @@ def find_quant_file(repo_id, quant):
     return matches, files
 
 
-def download_one(item: dict, log=print) -> bool:
+def download_one(item: dict, log=print, *, force: bool = False) -> bool:
     os.makedirs(MODELS_DIR, exist_ok=True)
     target_path = os.path.join(MODELS_DIR, item["target"])
-    if os.path.exists(target_path):
-        log(f"[skip] {item['target']} already present.")
+    st = gguf_status(target_path)
+    if st["ok"] and not force:
+        log(f"[skip] {item['target']} already present and valid "
+            f"({st['bytes']:,} bytes).")
         return True
+    if st["present"] and not st["ok"]:
+        log(f"[re-download] {item['target']} looks corrupt: {st['reason']}")
+        try:
+            os.remove(target_path)
+        except OSError as exc:
+            log(f"  ! could not remove bad file: {exc}")
+            return False
+    elif force and st["present"]:
+        log(f"[force] re-downloading {item['target']}")
+        try:
+            os.remove(target_path)
+        except OSError as exc:
+            log(f"  ! could not remove existing file: {exc}")
+            return False
+
     try:
         from huggingface_hub import hf_hub_download
     except ImportError:
@@ -85,17 +104,41 @@ def download_one(item: dict, log=print) -> bool:
     except Exception as exc:
         log(f"  ! download failed: {exc}")
         return False
-    log(f"  done: {target_path}")
+
+    st = gguf_status(target_path)
+    if not st["ok"]:
+        log(f"  ! downloaded file failed checks: {st['reason']}")
+        return False
+    log(f"  done: {target_path} ({st['bytes']:,} bytes)")
     return True
 
 
-def download_keys(keys: list[str] | None = None, log=print) -> bool:
+def download_keys(
+    keys: list[str] | None = None,
+    log=print,
+    *,
+    force: bool = False,
+) -> bool:
     wanted = set(keys) if keys else {d["key"] for d in DOWNLOADS}
+    # Drop keys that are already healthy so we never even hit the network.
+    from src.pack_install import models_needing_download
+    if not force:
+        needed = set(models_needing_download(list(wanted)))
+        skipped = wanted - needed
+        for key in sorted(skipped):
+            item = next((d for d in DOWNLOADS if d["key"] == key), None)
+            name = item["target"] if item else key
+            log(f"[skip] {name} already present and valid.")
+        wanted = needed
+        if not wanted:
+            log("Nothing to download — all requested models are present and valid.")
+            return True
+
     ok = True
     for item in DOWNLOADS:
         if item["key"] not in wanted:
             continue
-        if not download_one(item, log=log):
+        if not download_one(item, log=log, force=force):
             ok = False
     return ok
 
@@ -106,11 +149,16 @@ def main(argv=None) -> int:
         "--keys",
         help="Comma-separated: architect,operator,flavor (default: all)",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Re-download even when a valid file is already present",
+    )
     args = parser.parse_args(argv)
     keys = None
     if args.keys:
         keys = [k.strip() for k in args.keys.split(",") if k.strip()]
-    return 0 if download_keys(keys) else 1
+    return 0 if download_keys(keys, force=args.force) else 1
 
 
 if __name__ == "__main__":

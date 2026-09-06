@@ -13,9 +13,11 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QVBoxLayout,
+    QWidget,
 )
 
 from src.capture_queue import CaptureQueue, describe_item, item_preview
+from ui_qt.widgets.flow_layout import FlowLayout
 
 
 class CaptureReviewDialog(QDialog):
@@ -47,7 +49,8 @@ class CaptureReviewDialog(QDialog):
         split.setSizes([240, 160])
         v.addWidget(split, 1)
 
-        row = QHBoxLayout()
+        footer = QWidget()
+        row = FlowLayout(footer, hspacing=6, vspacing=4)
         approve_btn = QPushButton("Approve selected")
         approve_btn.clicked.connect(self._approve_selected)
         row.addWidget(approve_btn)
@@ -55,7 +58,6 @@ class CaptureReviewDialog(QDialog):
         discard_btn.setProperty("secondary", True)
         discard_btn.clicked.connect(self._discard_selected)
         row.addWidget(discard_btn)
-        row.addStretch()
         approve_all_btn = QPushButton("Approve all")
         approve_all_btn.clicked.connect(self._approve_all)
         row.addWidget(approve_all_btn)
@@ -67,7 +69,7 @@ class CaptureReviewDialog(QDialog):
         close_btn.setProperty("secondary", True)
         close_btn.clicked.connect(self.accept)
         row.addWidget(close_btn)
-        v.addLayout(row)
+        v.addWidget(footer)
 
         self.refresh()
 

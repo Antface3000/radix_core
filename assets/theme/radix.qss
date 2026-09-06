@@ -38,8 +38,24 @@ QToolButton {
     color: #E4ECD0;
     border: 1px solid #243018;
     border-radius: 8px;
-    padding: 6px 12px;
-    min-width: 80px;
+    padding: 5px 10px;
+    min-width: 0;
+}
+
+#FeatureRail {
+    spacing: 4px;
+    padding: 6px;
+}
+
+#FeatureRail QToolButton {
+    min-width: 0;
+    padding: 8px 10px;
+    text-align: center;
+}
+
+#EditorToolbar QToolButton,
+#EditorToolbar QPushButton {
+    min-width: 0;
 }
 
 QToolButton:hover {
@@ -67,6 +83,18 @@ QToolButton:checked {
 
 #FeatureLightboxTitle {
     color: #B8E800;
+    font-weight: 600;
+}
+
+#FindLightbox {
+    background-color: #0E180E;
+    border: 1px solid #46601A;
+    border-radius: 10px;
+}
+
+#FindLightboxTitle {
+    color: #B8E800;
+    font-size: 14px;
     font-weight: 600;
 }
 
@@ -138,31 +166,78 @@ QComboBox QAbstractItemView {
     padding: 4px;
 }
 
-/* spinbox buttons */
+/* spinbox buttons — high-contrast steppers (Settings, etc.) */
 QSpinBox::up-button, QSpinBox::down-button,
 QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
-    background: #101B10;
+    subcontrol-origin: border;
+    background: #243018;
     border: none;
-    border-left: 1px solid #243018;
-    width: 18px;
+    border-left: 1px solid #46601A;
+    width: 22px;
+}
+
+QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {
+    background: #5B7A1E;
+}
+
+QSpinBox::up-button {
+    subcontrol-position: top right;
+    border-top-right-radius: 7px;
+}
+
+QSpinBox::down-button {
+    subcontrol-position: bottom right;
+    border-bottom-right-radius: 7px;
 }
 
 QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
     image: none;
     width: 0;
     height: 0;
-    border-left: 3px solid transparent;
-    border-right: 3px solid transparent;
-    border-bottom: 4px solid #93BA00;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 6px solid #B8E800;
 }
 
 QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
     image: none;
     width: 0;
     height: 0;
-    border-left: 3px solid transparent;
-    border-right: 3px solid transparent;
-    border-top: 4px solid #93BA00;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #B8E800;
+}
+
+/* Editor font-size +/− */
+#SpinStepBtn {
+    background-color: #243018;
+    color: #B8E800;
+    border: 1px solid #46601A;
+    border-radius: 6px;
+    min-width: 28px;
+    max-width: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+#SpinStepBtn:hover {
+    background-color: #5B7A1E;
+    border-color: #B8E800;
+    color: #F2F8E2;
+}
+
+#SpinStepBtn:pressed {
+    background-color: #B8E800;
+    color: #080C08;
+}
+
+#FontSizeStepper QSpinBox {
+    min-width: 44px;
+    padding: 4px 2px;
 }
 
 /* ---------- buttons ---------- */
@@ -288,7 +363,7 @@ QTabBar::tab:selected {
 /* ---------- status bar + chips ---------- */
 QStatusBar {
     background: #0C140C;
-    color: #4A6040;
+    color: #8AA070;
     border-top: 1px solid #243018;
 }
 
@@ -298,11 +373,11 @@ QStatusBar::item {
 
 QStatusBar QLabel[chip="true"] {
     background: #101B10;
-    color: #8AA070;
+    color: #C8D8A8;
     border: 1px solid #243018;
     border-radius: 9px;
-    padding: 2px 10px;
-    margin: 2px 2px;
+    padding: 3px 10px;
+    margin: 2px 3px;
 }
 
 QStatusBar QLabel[chip="true"][accent="true"] {
@@ -317,6 +392,19 @@ QStatusBar QLabel[chip="true"][warn="true"] {
     color: #F0A030;
     border-color: #7A5A1E;
     font-weight: 600;
+}
+
+QStatusBar QLabel#PackDot {
+    background: transparent;
+    border: none;
+    padding: 0 4px;
+    margin: 0;
+    font-size: 11px;
+}
+
+#ChapterMetaBar QLabel[muted="true"] {
+    color: #8AA070;
+    padding-right: 2px;
 }
 
 /* ---------- lists / trees ---------- */
@@ -493,12 +581,72 @@ QGroupBox::title {
 }
 
 /* ---------- tooltips ---------- */
+/* Avoid max-width here: on Windows it truncates plain-text tips instead of wrapping. */
 QToolTip {
     background-color: #1A2912;
     color: #E4ECD0;
     border: 1px solid #5B7A1E;
     border-radius: 8px;
     padding: 8px 10px;
-    max-width: 320px;
     font-size: 12px;
+}
+
+/* ---------- dialogs / popups ---------- */
+QDialog, QMessageBox, QInputDialog, QFileDialog, QColorDialog, QFontDialog {
+    background-color: #0E180E;
+    color: #E4ECD0;
+    border: 1px solid #46601A;
+}
+
+QDialog QLabel, QMessageBox QLabel, QInputDialog QLabel {
+    color: #E4ECD0;
+    background: transparent;
+}
+
+QMessageBox {
+    min-width: 320px;
+}
+
+QMessageBox QLabel#qt_msgbox_label,
+QMessageBox QLabel {
+    min-width: 280px;
+}
+
+QDialogButtonBox {
+    background: transparent;
+}
+
+QDialogButtonBox QPushButton {
+    min-width: 88px;
+    padding: 6px 14px;
+}
+
+/* Prefer themed Qt file dialogs over native Windows chrome */
+QFileDialog QWidget {
+    background-color: #0E180E;
+    color: #E4ECD0;
+}
+
+QFileDialog QListView, QFileDialog QTreeView, QFileDialog QTableView {
+    background: #0A120A;
+    border: 1px solid #243018;
+    border-radius: 8px;
+    color: #E4ECD0;
+}
+
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QFrame {
+    color: #E4ECD0;
+}
+
+QAbstractItemView {
+    background-color: #0A120A;
+    color: #E4ECD0;
+    selection-background-color: #243018;
+    selection-color: #B8E800;
+    outline: none;
 }

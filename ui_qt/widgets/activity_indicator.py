@@ -77,7 +77,10 @@ class ActivityStatus(QWidget):
         self._indicator = ActivityIndicator(self)
         self._label = QLabel(idle_text)
         self._label.setProperty("muted", True)
-        layout.addWidget(self._indicator)
+        self._label.setWordWrap(True)
+        self._label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        layout.addWidget(self._indicator, 0, Qt.AlignmentFlag.AlignTop)
         layout.addWidget(self._label, 1)
         self._indicator.stop()
         if not idle_text:

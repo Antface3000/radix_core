@@ -159,6 +159,79 @@ class PackInstallTests(unittest.TestCase):
             set(config.MODEL_REGISTRY),
             {"architect", "operator", "flavor"})
 
+    def test_gguf_status_missing(self):
+        from src.pack_install import gguf_status
+        st = gguf_status(os.path.join("no", "such", "model.gguf"))
+        self.assertFalse(st["ok"])
+        self.assertFalse(st["present"])
+
+    def test_gguf_status_rejects_tiny_or_bad_header(self):
+        import tempfile
+        from src import pack_install
+        from src.pack_install import gguf_status, GGUF_MAGIC
+        with tempfile.TemporaryDirectory() as tmp:
+            tiny = os.path.join(tmp, "tiny.gguf")
+            with open(tiny, "wb") as fh:
+                fh.write(GGUF_MAGIC + b"\0" * 100)
+            st = gguf_status(tiny)
+            self.assertTrue(st["present"])
+            self.assertFalse(st["ok"])
+            self.assertIn("too small", st["reason"])
+
+            mid = os.path.join(tmp, "mid.gguf")
+            with open(mid, "wb") as fh:
+                fh.write(b"XXXX" + b"\0" * 200)
+            good = os.path.join(tmp, "good.gguf")
+            with open(good, "wb") as fh:
+                fh.write(GGUF_MAGIC + b"\0" * 200)
+            old = pack_install.MIN_GGUF_BYTES
+            try:
+                pack_install.MIN_GGUF_BYTES = 100
+                st2 = gguf_status(mid)
+                self.assertFalse(st2["ok"])
+                self.assertIn("bad header", st2["reason"])
+                st3 = gguf_status(good)
+                self.assertTrue(st3["ok"])
+            finally:
+                pack_install.MIN_GGUF_BYTES = old
+
+    def test_models_needing_download_skips_healthy(self):
+        from src import pack_install
+        rows = [
+            {"key": "architect", "ok": True},
+            {"key": "operator", "ok": False},
+            {"key": "flavor", "ok": True},
+        ]
+        old = pack_install.model_rows
+        try:
+            pack_install.model_rows = lambda: rows
+            needed = pack_install.models_needing_download(
+                ["architect", "operator", "flavor"])
+            self.assertEqual(needed, ["operator"])
+            self.assertEqual(pack_install.models_needing_download(["architect"]), [])
+        finally:
+            pack_install.model_rows = old
+
+
+class WritePromptTests(unittest.TestCase):
+    def test_prose_constraints_injected(self):
+        from src.story_context import (
+            build_write_prompt, DEFAULT_PROSE_CONSTRAINTS)
+
+        system, user = build_write_prompt(
+            "=== STORY SO FAR ===\nShe opened the hatch.",
+            prose_constraints=DEFAULT_PROSE_CONSTRAINTS)
+        self.assertIn("PROSE CONSTRAINTS (mandatory", system)
+        self.assertIn("ANTI-SUMMARIZATION", system)
+        self.assertIn("ozone", system)
+        self.assertIn("Honor PROSE CONSTRAINTS", user)
+
+    def test_prose_constraints_optional(self):
+        from src.story_context import build_write_prompt
+        system, user = build_write_prompt("ctx", prose_constraints="")
+        self.assertNotIn("PROSE CONSTRAINTS (mandatory", system)
+        self.assertNotIn("Honor PROSE CONSTRAINTS", user)
+
 
 if __name__ == "__main__":
     unittest.main()

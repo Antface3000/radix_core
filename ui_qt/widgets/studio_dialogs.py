@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLineEdit, QLabel, QPlainTextEdit, QCheckBox, QMessageBox,
+    QInputDialog,
 )
 
 from src import snapshots, project_search, chapter_notes, chapters
@@ -17,11 +18,14 @@ class SnapshotDialog(QDialog):
         self.chapter_id = chapter_id
         self.setWindowTitle("Chapter snapshots")
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Timed copies of this chapter. Restore replaces the buffer."))
+        layout.addWidget(QLabel(
+            "Timed copies of this chapter. Restore replaces the editor buffer."))
         self.list = QListWidget()
+        self.list.setToolTip("Newest first. Timed = autosave, Manual = Snapshot now.")
         layout.addWidget(self.list, 1)
         row = QHBoxLayout()
-        now = QPushButton("Snapshot now")
+        now = QPushButton("Snapshot now…")
+        now.setToolTip("Save a named copy of the current chapter text")
         now.clicked.connect(self._take)
         row.addWidget(now)
         restore = QPushButton("Restore selected")
@@ -30,25 +34,47 @@ class SnapshotDialog(QDialog):
         layout.addLayout(row)
         self._reload()
 
+    def _chapter_name(self) -> str:
+        paths = self.app.engine.paths
+        if not paths or not self.chapter_id:
+            return ""
+        for ch in chapters.list_chapters(paths["chapters"]):
+            if ch.get("id") == self.chapter_id:
+                return ch.get("name") or ""
+        return ""
+
     def _reload(self):
         self.list.clear()
         paths = self.app.engine.paths
         if not paths or not self.chapter_id:
             return
         for item in snapshots.list_snapshots(paths, self.chapter_id):
-            label = f"{item.get('stamp')}  ({item.get('reason', 'auto')})"
+            label = item.get("label") or snapshots.format_snapshot_label(item)
             row = QListWidgetItem(label)
             row.setData(256, item.get("stamp"))
+            tip = item.get("stamp") or ""
+            if item.get("chapterName"):
+                tip = f"{item['chapterName']}\n{tip}"
+            row.setToolTip(tip)
             self.list.addItem(row)
 
     def _take(self):
         editor = self.app.editor
         if not editor or not self.chapter_id:
             return
+        title, ok = QInputDialog.getText(
+            self, "Snapshot now",
+            "Optional name for this snapshot:",
+            text="")
+        if not ok:
+            return
         snapshots.take_snapshot(
             self.app.engine.paths, self.chapter_id,
-            editor.editor.toPlainText(), reason="manual")
+            editor.editor.toPlainText(), reason="manual",
+            title=title.strip(),
+            chapter_name=self._chapter_name())
         self._reload()
+        self.app.show_toast("Snapshot saved.")
 
     def _restore(self):
         item = self.list.currentItem()
@@ -127,7 +153,7 @@ class ProjectSearchDialog(QDialog):
         elif hit.get("kind") == "lore":
             self.app.open_lore_entry(hit.get("id") or "")
         elif hit.get("kind") == "bible":
-            self.app.show_feature("Story Bible")
+            self.app.ensure_feature("Story Bible", keep_others=True)
         self.accept()
 
 

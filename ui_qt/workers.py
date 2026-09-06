@@ -315,8 +315,11 @@ class EditorAiWorker(QThread):
                     cancelled = True
                     break
                 self.delta.emit(delta)
-        except Exception:
+        except Exception as exc:
             cancelled = True
+            from src.logutil import get_logger
+            get_logger("editor_ai").exception("Editor AI stream failed")
+            self.delta.emit(f"\n[Error: {type(exc).__name__}: {exc}]\n")
         self.finished_ok.emit(cancelled)
 
 
@@ -358,8 +361,11 @@ class EditorPipelineWorker(QThread):
                                     ev[2] if len(ev) > 2 else None)
             if self.engine.is_cancelled():
                 cancelled = True
-        except Exception:
+        except Exception as exc:
             cancelled = True
+            from src.logutil import get_logger
+            get_logger("editor_ai").exception("Editor pipeline failed")
+            self.event.emit("error", "pipeline", f"{type(exc).__name__}: {exc}")
         self.finished_ok.emit(cancelled)
 
 

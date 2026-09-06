@@ -8,13 +8,15 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QVBoxLayout, QLabel, QPushButton, QFormLayout, QLineEdit,
-    QGroupBox, QWidget, QCheckBox, QHBoxLayout, QFileDialog,
+    QGroupBox, QWidget, QCheckBox, QHBoxLayout,
     QPlainTextEdit, QScrollArea,
 )
 
 from src.plugins import extra_paths, is_enabled
 from src import pack_install
+from ui_qt.theme import get_existing_directory
 from ui_qt.panels.base import BasePanel
+from ui_qt.widgets.flow_layout import FlowLayout
 from ui_qt.workers import PackInstallWorker
 
 
@@ -64,17 +66,21 @@ class AddOnsPanel(BasePanel):
         self.llm_status = QLabel("")
         self.llm_status.setWordWrap(True)
         v.addWidget(self.llm_status)
-        row = QHBoxLayout()
+        tools = QWidget()
+        row = FlowLayout(tools, hspacing=6, vspacing=4)
         llama_btn = QPushButton("1. Install inference engine")
         llama_btn.setToolTip("Installs a prebuilt llama-cpp-python wheel (GPU if NVIDIA, else CPU).")
         llama_btn.clicked.connect(lambda: self._run_install("llama"))
         row.addWidget(llama_btn)
         models_btn = QPushButton("2. Download writing models (~15 GB)")
-        models_btn.setToolTip("Downloads all three GGUF files into models/. Needs the pack enabled.")
+        models_btn.setToolTip(
+            "Downloads missing or corrupt GGUF files into models/. "
+            "Skips files that are already present and look healthy.")
         models_btn.clicked.connect(lambda: self._run_install("models"))
         row.addWidget(models_btn)
-        v.addLayout(row)
-        row2 = QHBoxLayout()
+        v.addWidget(tools)
+        tools2 = QWidget()
+        row2 = FlowLayout(tools2, hspacing=6, vspacing=4)
         for key, label in (
                 ("architect", "Architect only"),
                 ("operator", "Operator only"),
@@ -83,7 +89,7 @@ class AddOnsPanel(BasePanel):
             btn.setProperty("secondary", True)
             btn.clicked.connect(lambda _=False, k=key: self._run_install("models", keys=[k]))
             row2.addWidget(btn)
-        v.addLayout(row2)
+        v.addWidget(tools2)
         hint = QLabel(
             "Start with Architect if you only want Write. Add Operator for Team "
             "jobs, Flavor for critics. You can keep using the studio while this runs.")
@@ -110,7 +116,8 @@ class AddOnsPanel(BasePanel):
         folder_row.addWidget(browse)
         form.addRow("ComfyUI folder", folder_row)
         v.addLayout(form)
-        row = QHBoxLayout()
+        tools = QWidget()
+        row = FlowLayout(tools, hspacing=6, vspacing=4)
         save = QPushButton("Save folder")
         save.clicked.connect(self._save_image)
         row.addWidget(save)
@@ -123,7 +130,7 @@ class AddOnsPanel(BasePanel):
         sync = QPushButton("Sync assets")
         sync.clicked.connect(self._sync_assets)
         row.addWidget(sync)
-        v.addLayout(row)
+        v.addWidget(tools)
         help_btn = QPushButton("How to install ComfyUI…")
         help_btn.setProperty("secondary", True)
         help_btn.clicked.connect(
@@ -152,14 +159,15 @@ class AddOnsPanel(BasePanel):
         at_row.addWidget(browse)
         form.addRow("AllTalk folder (optional)", at_row)
         v.addLayout(form)
-        row = QHBoxLayout()
+        tools = QWidget()
+        row = FlowLayout(tools, hspacing=6, vspacing=4)
         save = QPushButton("Save AllTalk folder")
         save.clicked.connect(self._save_audio)
         row.addWidget(save)
         launch = QPushButton("Launch AllTalk")
         launch.clicked.connect(self._launch_alltalk)
         row.addWidget(launch)
-        v.addLayout(row)
+        v.addWidget(tools)
         return box
 
     def _build_extra_card(self) -> QWidget:
@@ -187,13 +195,15 @@ class AddOnsPanel(BasePanel):
         info = pack_install.summarize(self.app.settings)
         llm = info["llm"]
         models = ", ".join(
-            f"{r['key']}{' ✓' if r['present'] else ' ✗'}" for r in llm["models"])
+            f"{r['key']}{' ✓' if r['ok'] else (' !' if r['present'] else ' ✗')}"
+            for r in llm["models"])
         self.llm_enable.blockSignals(True)
         self.llm_enable.setChecked(llm["enabled"])
         self.llm_enable.blockSignals(False)
         self.llm_status.setText(
             f"Inference engine: {'ready' if llm['llama'] else 'not installed'}.  "
-            f"Models: {llm['models_present']}/{llm['models_total']}  ({models}).")
+            f"Models: {llm.get('models_ok', llm['models_present'])}/"
+            f"{llm['models_total']} healthy  ({models}).")
 
         image = info["image"]
         self.image_enable.blockSignals(True)
@@ -236,8 +246,28 @@ class AddOnsPanel(BasePanel):
         if self._worker and self._worker.isRunning():
             self.app.show_toast("An install is already running.")
             return
-        self.log.appendPlainText(f"— starting {kind} —")
-        self._worker = PackInstallWorker(kind, {"keys": keys or []})
+
+        install_keys = list(keys or [])
+        if kind == "models":
+            wanted = install_keys or ["architect", "operator", "flavor"]
+            needed = pack_install.models_needing_download(wanted)
+            if not needed:
+                self.log.appendPlainText(
+                    "All requested models are already present and look healthy "
+                    "(GGUF header + size). Skipping download.")
+                self.app.show_toast("Models already present — download skipped.")
+                self.refresh_status()
+                return
+            skipped = [k for k in wanted if k not in needed]
+            for key in skipped:
+                self.log.appendPlainText(f"[skip] {key} already present and valid.")
+            self.log.appendPlainText(
+                f"— downloading {', '.join(needed)} (skipping healthy files) —")
+            install_keys = needed
+        else:
+            self.log.appendPlainText(f"— starting {kind} —")
+
+        self._worker = PackInstallWorker(kind, {"keys": install_keys})
         self._worker.line.connect(self.log.appendPlainText)
         self._worker.finished_ok.connect(self._install_done)
         self._worker.start()
@@ -251,12 +281,12 @@ class AddOnsPanel(BasePanel):
             self.app._update_mock_pill()
 
     def _browse_dir(self, line: QLineEdit):
-        path = QFileDialog.getExistingDirectory(self, "Choose folder", line.text())
+        path = get_existing_directory(self, "Choose folder", line.text())
         if path:
             line.setText(path)
 
     def _browse_extra(self):
-        path = QFileDialog.getExistingDirectory(self, "Plugin folder")
+        path = get_existing_directory(self, "Plugin folder")
         if path:
             self.extra_edit.setText(path)
 

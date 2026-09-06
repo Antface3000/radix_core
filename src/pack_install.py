@@ -9,6 +9,11 @@ import config
 from src.plugins import is_enabled
 from src.services import check_piper
 
+# GGUF files start with this 4-byte magic. Truncated downloads often don't.
+GGUF_MAGIC = b"GGUF"
+# Floor for our 8B Q4_K_M weights — incomplete HF copies are usually tiny.
+MIN_GGUF_BYTES = 1_000_000_000
+
 
 def _exists(path: str) -> bool:
     return bool(path) and os.path.isfile(path)
@@ -16,6 +21,36 @@ def _exists(path: str) -> bool:
 
 def _isdir(path: str) -> bool:
     return bool(path) and os.path.isdir(path)
+
+
+def gguf_status(path: str) -> dict:
+    """Return {ok, present, bytes, reason} for a GGUF path."""
+    if not _exists(path):
+        return {"ok": False, "present": False, "bytes": 0, "reason": "missing"}
+    try:
+        size = os.path.getsize(path)
+    except OSError as exc:
+        return {"ok": False, "present": True, "bytes": 0, "reason": str(exc)}
+    if size < MIN_GGUF_BYTES:
+        return {
+            "ok": False,
+            "present": True,
+            "bytes": size,
+            "reason": f"too small ({size:,} bytes) — likely incomplete",
+        }
+    try:
+        with open(path, "rb") as fh:
+            magic = fh.read(4)
+    except OSError as exc:
+        return {"ok": False, "present": True, "bytes": size, "reason": str(exc)}
+    if magic != GGUF_MAGIC:
+        return {
+            "ok": False,
+            "present": True,
+            "bytes": size,
+            "reason": f"bad header {magic!r} (expected GGUF)",
+        }
+    return {"ok": True, "present": True, "bytes": size, "reason": "ok"}
 
 
 def llama_ok() -> bool:
@@ -30,21 +65,29 @@ def model_rows() -> list[dict]:
     rows = []
     for key, spec in (config.MODEL_REGISTRY or {}).items():
         path = spec.get("path") or ""
-        present = _exists(path)
+        st = gguf_status(path)
         rows.append({
             "key": key,
             "name": key,
             "path": path,
             "filename": os.path.basename(path),
-            "present": present,
-            "bytes": os.path.getsize(path) if present else 0,
+            "present": st["present"],
+            "ok": st["ok"],
+            "bytes": st["bytes"],
+            "reason": st["reason"],
         })
     return rows
 
 
 def models_ready() -> bool:
     rows = model_rows()
-    return bool(rows) and all(r["present"] for r in rows)
+    return bool(rows) and all(r["ok"] for r in rows)
+
+
+def models_needing_download(keys: list[str] | None = None) -> list[str]:
+    """Keys whose files are missing or fail the GGUF sanity check."""
+    wanted = set(keys) if keys else set(config.MODEL_REGISTRY or {})
+    return [r["key"] for r in model_rows() if r["key"] in wanted and not r["ok"]]
 
 
 def guess_comfy_dirs() -> list[str]:
@@ -92,6 +135,7 @@ def piper_ready(settings) -> bool:
 def summarize(settings) -> dict:
     rows = model_rows()
     present = sum(1 for r in rows if r["present"])
+    healthy = sum(1 for r in rows if r["ok"])
     comfy = (settings.get("services.comfyui_dir") or "").strip()
     if not comfy:
         guessed = guess_comfy_dirs()
@@ -105,9 +149,10 @@ def summarize(settings) -> dict:
             "enabled": is_enabled(settings, "llm"),
             "llama": llama_ok(),
             "models_present": present,
+            "models_ok": healthy,
             "models_total": len(rows),
             "models": rows,
-            "ready": llama_ok() and present > 0,
+            "ready": llama_ok() and healthy > 0,
         },
         "image": {
             "enabled": is_enabled(settings, "image"),

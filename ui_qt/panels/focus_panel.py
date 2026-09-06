@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from src import lore_types, lore_quick_add, lore_audit, lore_migrate
 from ui_qt.panels.base import BasePanel
+from ui_qt.widgets.flow_layout import FlowLayout
 from ui_qt.widgets.lore_audit_dialog import run_lore_audit_dialog
 
 
@@ -134,25 +135,26 @@ class FocusPanel(BasePanel):
     def _build_audit_tab(self):
         tab = QWidget()
         v = QVBoxLayout(tab)
-        row = QHBoxLayout()
+        tools = QWidget()
+        row = FlowLayout(tools, hspacing=6, vspacing=4)
         run_btn = QPushButton("Re-audit…")
         run_btn.setToolTip("Read lore, check entries make sense, offer to fix")
         run_btn.clicked.connect(self._run_audit)
         row.addWidget(run_btn)
+        row.addWidget(QLabel("Show:"))
         self.audit_filter = QComboBox()
         self.audit_filter.addItems(["All", "Errors", "Warnings", "Info"])
         self.audit_filter.currentIndexChanged.connect(self._filter_audit_list)
-        row.addWidget(QLabel("Show:"))
         row.addWidget(self.audit_filter)
-        row.addStretch()
         migrate_btn = QPushButton("Preview legacy upgrade…")
         migrate_btn.setProperty("secondary", True)
         migrate_btn.clicked.connect(self._preview_migrate)
         row.addWidget(migrate_btn)
-        v.addLayout(row)
+        v.addWidget(tools)
 
         self.audit_list = QListWidget()
-        self.audit_list.itemDoubleClicked.connect(self._jump_to_audit_entry)
+        self.audit_list.setToolTip("Click an issue to open that lore entry in Story Bible.")
+        self.audit_list.itemClicked.connect(self._jump_to_audit_entry)
         v.addWidget(self.audit_list, 1)
         self._audit_issues = []
         self.tabs.addTab(tab, "Canon Audit")
@@ -180,8 +182,11 @@ class FocusPanel(BasePanel):
                 text += " [fix]"
             text += f" {issue.message}"
             item = QListWidgetItem(text)
-            item.setData(Qt.ItemDataRole.UserRole, issue.entry_id)
-            item.setToolTip(issue.fix_hint or "")
+            item.setData(Qt.ItemDataRole.UserRole, issue)
+            tip = issue.fix_hint or ""
+            if issue.entry_id:
+                tip = (tip + "\n" if tip else "") + "Click to open this entry."
+            item.setToolTip(tip)
             self.audit_list.addItem(item)
 
     def _filter_audit_list(self):
@@ -189,9 +194,14 @@ class FocusPanel(BasePanel):
             self._populate_audit_list()
 
     def _jump_to_audit_entry(self, item: QListWidgetItem):
-        eid = item.data(Qt.ItemDataRole.UserRole)
+        issue = item.data(Qt.ItemDataRole.UserRole)
+        eid = getattr(issue, "entry_id", None) if issue is not None else None
+        if not eid and isinstance(issue, str):
+            eid = issue
         if eid:
-            self.app.open_lore_entry(eid)
+            self.app.open_lore_entry(str(eid))
+        else:
+            self.app.show_toast("This issue is not tied to a single lore entry.")
 
     def _preview_migrate(self):
         paths = self._paths()

@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QWidget,
     QCheckBox,
     QMenu,
-    QFileDialog,
     QInputDialog,
     QDialog,
     QMessageBox,
@@ -33,8 +32,10 @@ from src.story_bible_gen import MODE_LABELS
 from src.logutil import get_logger
 from ui_qt.ambiguity_gate import run_ambiguity_gate
 from ui_qt.panels.base import BasePanel
+from ui_qt.theme import get_save_file_name
 from ui_qt.widgets.field_generate_dialog import FieldGenerateDialog
 from ui_qt.widgets.activity_indicator import ActivityStatus
+from ui_qt.widgets.flow_layout import FlowLayout
 from ui_qt.widgets.lore_entry_form import LoreEntryForm
 from ui_qt.widgets.lore_audit_dialog import run_lore_audit_dialog
 from ui_qt.workers import FieldGenerateWorker
@@ -288,7 +289,8 @@ class StoryBiblePanel(BasePanel):
     def _build_lore_tab(self):
         tab = QWidget()
         v = QVBoxLayout(tab)
-        row = QHBoxLayout()
+        tools = QWidget()
+        row = FlowLayout(tools, hspacing=6, vspacing=4)
         self.lore_filter = QComboBox()
         for key, label in lore_types.FILTER_OPTIONS:
             self.lore_filter.addItem(label, key)
@@ -308,7 +310,7 @@ class StoryBiblePanel(BasePanel):
         reaudit_btn.setToolTip("Check lore entries make sense; offer automatic fixes")
         reaudit_btn.clicked.connect(self._reaudit_lore)
         row.addWidget(reaudit_btn)
-        v.addLayout(row)
+        v.addWidget(tools)
 
         sel_row = QHBoxLayout()
         sel_all = QPushButton("Select all")
@@ -639,7 +641,7 @@ class StoryBiblePanel(BasePanel):
         if not paths:
             return
         self.save_all()
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = get_save_file_name(
             self, "Export Story Bible", "", "Markdown (*.md);;Text (*.txt)")
         if not path:
             return
@@ -702,9 +704,22 @@ class StoryBiblePanel(BasePanel):
         self.tabs.setCurrentIndex(2)
 
     def select_lore_entry(self, entry_id: str):
+        """Snap Lorebook list + form to this entry (Focus / continuity jump)."""
         self.tabs.setCurrentIndex(1)
         self._lore_loaded_id = entry_id
+        # Ensure the entry is visible regardless of type filter.
+        if hasattr(self, "lore_filter") and self.lore_filter.currentData() not in (None, "all"):
+            idx = self.lore_filter.findData("all")
+            if idx >= 0:
+                self.lore_filter.blockSignals(True)
+                self.lore_filter.setCurrentIndex(idx)
+                self.lore_filter.blockSignals(False)
         self._reload_lore_list()
+        for i in range(self.lore_list.count()):
+            item = self.lore_list.item(i)
+            if item and item.data(Qt.ItemDataRole.UserRole) == entry_id:
+                self.lore_list.scrollToItem(item)
+                break
 
     def _upgrade_legacy_lore(self):
         paths = self._paths()

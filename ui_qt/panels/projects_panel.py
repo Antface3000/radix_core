@@ -2,9 +2,10 @@
 
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLineEdit, QLabel,
-    QInputDialog, QMessageBox, QFileDialog,
+    QInputDialog, QMessageBox,
 )
 from ui_qt.panels.base import BasePanel
+from ui_qt.theme import get_existing_directory
 
 
 class ProjectsPanel(BasePanel):
@@ -71,7 +72,7 @@ class ProjectsPanel(BasePanel):
         paths = self.app.engine.paths
         if not paths:
             return
-        dest = QFileDialog.getExistingDirectory(self, "Backup project to folder")
+        dest = get_existing_directory(self, "Backup project to folder")
         if not dest:
             return
         from src import snapshots

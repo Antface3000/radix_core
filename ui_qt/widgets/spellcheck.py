@@ -10,11 +10,12 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, QEvent, Qt, QTimer
 from PySide6.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor, QTextCursor, QKeyEvent
 from PySide6.QtWidgets import (
-    QPlainTextEdit, QTextEdit, QMenu, QWidget, QHBoxLayout, QLabel,
+    QPlainTextEdit, QTextEdit, QMenu, QWidget, QLabel,
     QPushButton, QComboBox,
 )
 
 import config
+from ui_qt.widgets.flow_layout import FlowLayout
 
 _COMMON_TYPOS = {
     "teh": "the",
@@ -369,12 +370,12 @@ class SpellReplaceBar(QWidget):
         self._editor = editor
         self._cursor: QTextCursor | None = None
         self._word = ""
-        row = QHBoxLayout(self)
-        row.setContentsMargins(4, 0, 4, 0)
+        row = FlowLayout(self, margin=4, hspacing=6, vspacing=4)
         self._label = QLabel("")
         row.addWidget(self._label)
         self._more = QComboBox()
-        self._more.setMinimumWidth(140)
+        self._more.setMinimumWidth(120)
+        self._more.setMaximumWidth(200)
         self._more.activated.connect(self._apply_combo)
         row.addWidget(self._more)
         self._accept = QPushButton("Replace")
@@ -388,7 +389,7 @@ class SpellReplaceBar(QWidget):
         row.addWidget(add)
         self._grammar = QLabel("")
         self._grammar.setProperty("muted", True)
-        row.addWidget(self._grammar, 1)
+        row.addWidget(self._grammar)
         self.hide()
 
     def refresh(self, settings=None):

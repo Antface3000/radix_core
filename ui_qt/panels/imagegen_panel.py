@@ -30,16 +30,20 @@ class _RenderWorker(QThread):
 
     def run(self):
         try:
-            result = {"data": None}
+            result = {"data": None, "failed": False}
 
             def on_image(b64, _pid):
                 result["data"] = b64
 
             def on_progress(msg):
-                self.progress.emit(str(msg))
+                self.progress.emit(str(msg) if not isinstance(msg, dict) else msg)
 
             def on_error(msg):
-                self.error.emit(str(msg))
+                result["failed"] = True
+                if isinstance(msg, dict):
+                    self.error.emit(str(msg.get("message") or msg))
+                else:
+                    self.error.emit(str(msg))
 
             self.comfy.render(
                 self.text,
@@ -50,7 +54,8 @@ class _RenderWorker(QThread):
                 on_image=on_image,
                 on_error=on_error,
             )
-            self.done.emit(result["data"])
+            if not result["failed"]:
+                self.done.emit(result["data"])
         except Exception as exc:
             self.error.emit(str(exc))
 
@@ -80,6 +85,7 @@ class ImageGenPanel(BasePanel):
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setProperty("danger", True)
         self.stop_btn.setEnabled(False)
+        self.stop_btn.clicked.connect(self._stop)
         btn_row.addWidget(self.gen_btn)
         btn_row.addWidget(self.stop_btn)
         layout.addLayout(btn_row)
@@ -119,22 +125,52 @@ class ImageGenPanel(BasePanel):
         self.progress.show()
         self.status.setText("Submitting to ComfyUI...")
         self._worker = _RenderWorker(self.app.comfy, text, lore_ctx, ws, options)
-        self._worker.progress.connect(lambda m: self.status.setText(m))
+        self._worker.progress.connect(self._on_progress)
         self._worker.error.connect(self._on_error)
         self._worker.done.connect(self._on_done)
         self._worker.start()
+
+    def _stop(self):
+        if not (self._worker and self._worker.isRunning()):
+            return
+        self.status.setText("Stopping…")
+        self.stop_btn.setEnabled(False)
+        ok = False
+        try:
+            ok = bool(self.app.comfy.interrupt())
+        except Exception:
+            ok = False
+        if not ok:
+            self.status.setText("Stop requested (ComfyUI may still finish).")
+        else:
+            self.status.setText("Stop sent to ComfyUI…")
+
+    def _on_progress(self, msg):
+        if isinstance(msg, dict):
+            label = msg.get("label") or msg.get("phase") or "Working…"
+            self.status.setText(str(label))
+        else:
+            self.status.setText(str(msg))
 
     def _on_error(self, msg: str):
         self.progress.hide()
         self.gen_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
-        self.status.setText(f"Error: {msg}")
-        self.app.show_toast(f"Image gen failed: {msg}", error=True)
+        text = str(msg)
+        if isinstance(msg, dict):
+            text = str(msg.get("message") or msg)
+        cancelled = "cancel" in text.lower()
+        self.status.setText("Cancelled." if cancelled else f"Error: {text}")
+        if not cancelled:
+            self.app.show_toast(f"Image gen failed: {text}", error=True)
 
     def _on_done(self, b64):
         self.progress.hide()
         self.gen_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        if getattr(self.app.comfy, "_cancelled", lambda: False)():
+            self.status.setText("Cancelled.")
+            return
         if not b64:
             self.status.setText("No image returned.")
             return

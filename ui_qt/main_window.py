@@ -7,11 +7,11 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import (
     QMainWindow,
-    QProgressBar,
     QStatusBar,
     QLabel,
     QMessageBox,
     QToolBar,
+    QToolButton,
     QWidget,
 )
 
@@ -24,6 +24,7 @@ class _ClickLabel(QLabel):
             self.clicked.emit()
         super().mousePressEvent(event)
 
+from src import projects, world_state
 from src.plugins import is_enabled, panel_allowed, PACK_LABELS
 from src.logutil import get_logger
 from src.settings import Settings
@@ -32,7 +33,6 @@ from src.writing_engine import WritingEngine
 from src.comfyui import ComfyClient
 from src.tts import TTSClient
 
-from ui_qt.theme import load_stylesheet
 from ui_qt.widgets.editor import EditorWidget
 from ui_qt.widgets.feature_lightbox import FeatureLightbox
 from ui_qt.panels.storybible_panel import StoryBiblePanel
@@ -91,7 +91,6 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(f"{config.APP_TITLE} v{config.APP_VERSION}")
         self.resize(1280, 820)
-        self.setStyleSheet(load_stylesheet())
 
         self._build_editor()
         self._build_toolbar()
@@ -112,6 +111,8 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event):
         super().showEvent(event)
+        # Stylesheet polish can change button metrics — re-equalize once shown.
+        QTimer.singleShot(0, self._uniform_feature_rail_buttons)
         if not self._startup_done:
             self._startup_done = True
             QTimer.singleShot(0, self._run_startup_sequence)
@@ -142,16 +143,46 @@ class MainWindow(QMainWindow):
 
     def _build_toolbar(self):
         tb = QToolBar("Features")
+        tb.setObjectName("FeatureRail")
         tb.setMovable(False)
         tb.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self.addToolBar(Qt.LeftToolBarArea, tb)
         self._feature_toolbar = tb
 
+    def _uniform_feature_rail_buttons(self):
+        """Make every left-rail button as wide as the longest label."""
+        tb = getattr(self, "_feature_toolbar", None)
+        if tb is None:
+            return
+        buttons: list[QToolButton] = []
+        for act in tb.actions():
+            w = tb.widgetForAction(act)
+            if isinstance(w, QToolButton):
+                buttons.append(w)
+        if not buttons:
+            return
+        # Prefer measuring all feature names so hidden pack buttons stay aligned.
+        from PySide6.QtGui import QFontMetrics
+        fm = QFontMetrics(buttons[0].font())
+        # Match QSS horizontal padding (5px + 10px each side) + border
+        pad = 28
+        label_w = max(
+            (fm.horizontalAdvance(name) for name, _ in getattr(self, "_features", [])),
+            default=0,
+        )
+        hint_w = max(b.sizeHint().width() for b in buttons)
+        width = max(label_w + pad, hint_w)
+        for b in buttons:
+            b.setFixedWidth(width)
+        # Keep the rail itself snug to the uniform button width.
+        m = tb.contentsMargins()
+        tb.setFixedWidth(width + m.left() + m.right() + 8)
+
     def _build_statusbar(self):
         sb = QStatusBar()
         self.setStatusBar(sb)
         self._project_lbl = _ClickLabel("")
-        self._project_lbl.setToolTip("Click to open Projects panel")
+        self._project_lbl.setToolTip("Active project — click to open Projects")
         self._project_lbl.setProperty("chip", True)
         self._project_lbl.clicked.connect(lambda: self.show_feature("Projects"))
         self._canon_lbl = _ClickLabel("")
@@ -167,21 +198,23 @@ class MainWindow(QMainWindow):
         self._mock_lbl.clicked.connect(lambda: self.show_feature("Add Ons"))
         self._mock_lbl.hide()
         self._world_lbl = _ClickLabel("")
-        self._world_lbl.setToolTip("Click to open Story Bible → World State")
+        self._world_lbl.setToolTip(
+            "World State (date · location) — click to edit in Story Bible")
         self._world_lbl.setProperty("chip", True)
         self._world_lbl.clicked.connect(self._open_world_state)
-        self._goal_bar = QProgressBar()
-        self._goal_bar.setTextVisible(False)
-        self._goal_bar.setFixedWidth(90)
-        self._goal_bar.setFixedHeight(10)
-        self._goal_bar.hide()
+        self._world_lbl.hide()
         self._word_lbl = QLabel("0 words")
         self._word_lbl.setProperty("chip", True)
+        self._word_lbl.setToolTip("Word count for the current chapter")
         self._session_lbl = QLabel("")
         self._session_lbl.setProperty("chip", True)
+        self._session_lbl.setToolTip(
+            "Words written this app session and today (from chapter word count)")
+        self._session_lbl.hide()
         self._pack_dots = {}
         for key in ("llm", "image", "audio"):
             dot = QLabel("●")
+            dot.setObjectName("PackDot")
             dot.setToolTip(f"{PACK_LABELS[key]} pack")
             dot.hide()
             self._pack_dots[key] = dot
@@ -191,7 +224,6 @@ class MainWindow(QMainWindow):
             sb.addPermanentWidget(dot)
         sb.addPermanentWidget(self._canon_lbl)
         sb.addPermanentWidget(self._world_lbl)
-        sb.addPermanentWidget(self._goal_bar)
         sb.addPermanentWidget(self._session_lbl)
         sb.addPermanentWidget(self._word_lbl)
         self._update_mock_pill()
@@ -216,6 +248,7 @@ class MainWindow(QMainWindow):
             act.triggered.connect(lambda _checked=False, n=name: self.show_feature(n))
             self._feature_toolbar.addAction(act)
             self._feature_actions[name] = act
+        self._uniform_feature_rail_buttons()
 
     def _ensure_panel(self, name: str):
         if name in self._panels:
@@ -319,7 +352,14 @@ class MainWindow(QMainWindow):
         self.open_team(initial_message, mode)
 
     def show_feature(self, name: str):
-        """Open or toggle a feature lightbox."""
+        """Open or toggle a feature lightbox (rail click)."""
+        self._show_feature(name, toggle=True, keep_others=False)
+
+    def ensure_feature(self, name: str, *, keep_others: bool = False):
+        """Open or raise a feature without toggle-close (jump-to / deep links)."""
+        self._show_feature(name, toggle=False, keep_others=keep_others)
+
+    def _show_feature(self, name: str, *, toggle: bool, keep_others: bool):
         team_tab = None
         if name == "Plan":
             team_tab = TeamPanel.TAB_PLAN
@@ -331,24 +371,24 @@ class MainWindow(QMainWindow):
         if not panel_allowed(self.settings, name):
             self.show_toast(
                 f"{name} needs an Add Ons pack enabled first.", error=True)
-            self.show_feature("Add Ons")
+            self.ensure_feature("Add Ons")
             return
 
         lb = self._lightboxes.get(name)
         if lb and lb.isVisible():
-            if lb.stay_open.isChecked():
-                lb.raise_()
-                lb.activateWindow()
-                if team_tab is not None:
-                    panel = self._panels.get(name)
-                    if panel and hasattr(panel, "show_plan_tab"):
-                        panel.show_plan_tab()
+            if toggle and not lb.stay_open.isChecked():
+                self._close_lightbox(name)
                 return
-            self._close_lightbox(name)
+            lb.raise_()
+            lb.activateWindow()
+            if team_tab is not None:
+                panel = self._panels.get(name)
+                if panel and hasattr(panel, "show_plan_tab"):
+                    panel.show_plan_tab()
             return
 
         single_mode = self.settings.get("ui.lightbox_single_mode", "replace")
-        if single_mode == "replace":
+        if single_mode == "replace" and not keep_others:
             for other, other_lb in list(self._lightboxes.items()):
                 if other != name and other_lb.isVisible():
                     if not other_lb.stay_open.isChecked():
@@ -393,14 +433,15 @@ class MainWindow(QMainWindow):
                 self._open_lightbox(name)
 
     def _open_world_state(self):
-        self.show_feature("Story Bible")
+        self.ensure_feature("Story Bible", keep_others=True)
         panel = self._panels.get("Story Bible")
         if panel and hasattr(panel, "show_world_state_tab"):
             panel.show_world_state_tab()
 
     def open_lore_entry(self, entry_id: str):
         """Open Story Bible lore tab and select an entry (audit jump-to)."""
-        self.show_feature("Story Bible")
+        # Keep Focus (or other source panels) open so users can click through issues.
+        self.ensure_feature("Story Bible", keep_others=True)
         panel = self._panels.get("Story Bible")
         if panel and hasattr(panel, "select_lore_entry"):
             panel.select_lore_entry(entry_id)
@@ -485,14 +526,21 @@ class MainWindow(QMainWindow):
     def refresh_worldbar(self):
         paths = self.engine.paths
         if not paths:
-            self._world_lbl.setText("")
+            self._world_lbl.clear()
+            self._world_lbl.hide()
             return
         try:
             ws = world_state.read(paths["world_state"])
-            parts = [ws.get("currentDate", ""), ws.get("currentLocation", "")]
-            self._world_lbl.setText("  |  ".join(p for p in parts if p))
+            parts = [p for p in (ws.get("currentDate", ""), ws.get("currentLocation", "")) if p]
+            if parts:
+                self._world_lbl.setText(" · ".join(parts))
+                self._world_lbl.show()
+            else:
+                self._world_lbl.clear()
+                self._world_lbl.hide()
         except Exception:
             log.exception("World bar refresh failed")
+            self._world_lbl.hide()
 
     def _update_word_count(self, words: int, chars: int):
         try:
@@ -501,25 +549,26 @@ class MainWindow(QMainWindow):
             goal = 0
         if goal > 0:
             self._word_lbl.setText(f"{words:,} / {goal:,} words")
-            self._word_lbl.setToolTip("Word-goal progress for this chapter")
-            self._goal_bar.setMaximum(goal)
-            self._goal_bar.setValue(min(words, goal))
-            self._goal_bar.show()
+            pct = min(100, int(100 * words / goal)) if goal else 0
+            self._word_lbl.setToolTip(
+                f"Chapter word count vs your goal ({pct}% of {goal:,})")
         else:
             self._word_lbl.setText(f"{words:,} words  ·  {chars:,} chars")
-            self._word_lbl.setToolTip("")
-            self._goal_bar.hide()
+            self._word_lbl.setToolTip("Word and character count for this chapter")
         paths = self.engine.paths
         if paths:
             try:
                 from src import session_stats
                 stats = session_stats.on_word_count(paths, words)
                 self._session_lbl.setText(
-                    f"session {stats.get('sessionWords', 0):,}  ·  today {stats.get('dayWords', 0):,}")
+                    f"Session {stats.get('sessionWords', 0):,} · Today {stats.get('dayWords', 0):,}")
+                self._session_lbl.show()
             except Exception:
-                self._session_lbl.setText("")
+                self._session_lbl.clear()
+                self._session_lbl.hide()
         else:
-            self._session_lbl.setText("")
+            self._session_lbl.clear()
+            self._session_lbl.hide()
 
     def _update_mock_pill(self):
         if not is_enabled(self.settings, "llm"):
@@ -550,6 +599,7 @@ class MainWindow(QMainWindow):
         self._paint_pack_dots()
         if self.editor and hasattr(self.editor, "apply_plugin_chrome"):
             self.editor.apply_plugin_chrome()
+        self._uniform_feature_rail_buttons()
 
     def _paint_pack_dots(self):
         health = self._service_health or {}
@@ -625,7 +675,8 @@ class MainWindow(QMainWindow):
             from src import snapshots
             snapshots.take_snapshot(
                 self.engine.paths, self.editor._chapter_id,
-                self.editor.editor.toPlainText(), reason="close")
+                self.editor.editor.toPlainText(), reason="close",
+                chapter_name=self.editor.chapter_combo.currentText())
         pinned = [
             name for name, lb in self._lightboxes.items()
             if lb.isVisible() and lb.stay_open.isChecked()

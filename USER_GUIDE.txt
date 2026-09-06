@@ -88,7 +88,9 @@ Project Search scans chapters, lore, and Story Bible (replace is chapters only).
 
 Snapshots and notes
 -------------------
-Snapshots saves timed copies of the current chapter; restore from the dialog.
+Snapshots saves timed copies of the current chapter. The list shows kind, local
+time, and word count (Timed / Manual / On close). Snapshot now can add an
+optional title. Restore replaces the editor buffer.
 Notes (fix-later) sit beside the chapter in *.notes.json and are never sent to
 Write/Chat unless you check Include notes in AI.
 
@@ -297,7 +299,8 @@ persist to data/global.json / data/agents.json and apply live.
   default), ambiguity check, system planner/liaison keys.
 - Editor: lore autoscan interval, match mode (substring / word boundary / regex
   keywords), find defaults (case, whole words, regex), Write/Chat pipeline,
-  style guides, team defaults (default specialist, ideas persona).
+  style guides, prose constraints (anti-trope filter for Write), team defaults
+  (default specialist, ideas persona).
 - Agents: per-persona overrides (global vs project scope), reset project override.
 - Services: ComfyUI / AllTalk URLs and folders, TTS, Piper, heartbeat interval.
 - Image: workflow, dimensions, style prefix, seed behavior.
