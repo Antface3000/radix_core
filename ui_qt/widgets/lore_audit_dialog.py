@@ -4,21 +4,23 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
+    QVBoxLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
     QPushButton, QComboBox, QMessageBox, QWidget,
 )
+from ui_qt.widgets.themed_dialog import ThemedDialog
 
 from src import lore_audit
 from ui_qt.widgets.flow_layout import FlowLayout
 
 
-class LoreAuditDialog(QDialog):
+class LoreAuditDialog(ThemedDialog):
     def __init__(self, parent, app, issues: list[lore_audit.AuditIssue]):
         super().__init__(parent)
         self.app = app
         self._issues = list(issues)
         self.setWindowTitle("Lore re-audit")
-        self.resize(560, 420)
+        self.setMinimumSize(420, 320)
+        self.resize(620, 480)
 
         layout = QVBoxLayout(self)
         fixable = lore_audit.fixable_issues(self._issues)
@@ -87,8 +89,12 @@ class LoreAuditDialog(QDialog):
 
     def _jump(self, item: QListWidgetItem):
         issue = item.data(Qt.ItemDataRole.UserRole)
-        if issue and issue.entry_id:
-            self.app.open_lore_entry(issue.entry_id)
+        if issue is None:
+            return
+        entry_id = getattr(issue, "entry_id", None)
+        name = getattr(issue, "target_name", None)
+        self.app.open_lore_entry(
+            str(entry_id) if entry_id else "", name=name or None, issue=issue)
 
     def _apply_fixes(self):
         paths = self.app.engine.paths

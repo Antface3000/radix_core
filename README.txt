@@ -6,7 +6,8 @@ manuscript workspace with Story Bible, Lorebook, World State, binder, compile,
 and spellcheck — no AI until you enable a pack in Add Ons.
 
 Three optional packs (all off by default):
-  Local LLM  — Write, Chat, Team, Brainstorm, Ask Agent, retrieval, continuity
+  Local LLM  — Write, Chat, Team, Draft, Story Bible wizards, Fill from
+    chapters, Brainstorm, Ask Agent, retrieval, continuity
   Image      — Image Gen, Visualize, ComfyUI launch + sync assets
   Audio      — Voice / Listen (Piper / AllTalk speech, not music)
 
@@ -29,7 +30,7 @@ DOCUMENTATION
                    panel / the ? button in the top bar).
   INSTALL.txt    - step-by-step Windows installation tutorial (Python, venv,
                    GPU wheel, models, optional ComfyUI + TTS).
-  CHANGELOG.txt  - release history (see VERSION for current release).
+  CHANGELOG.txt  - release / development log (see VERSION for current release).
   RELEASE.txt    - maintainer release workflow (scripts/release.py).
 
 Most non-obvious controls also show a hover tooltip. On first launch a Projects
@@ -57,13 +58,14 @@ radix_core/
         start_services.py   # AllTalk/Comfy/Piper only if those packs are on
     src/
         engine.py writing_engine.py personas.py settings.py projects.py
+        lore_wizard.py draft_engine.py manuscript_fill.py
         plugins/ pack_install.py snapshots.py retrieval.py series.py
         export.py import_docs.py project_search.py
         orchestration/      # team jobs, HITL, tools
     ui_qt/                  # PySide6 GUI
         main_window.py app.py
-        widgets/editor.py spellcheck.py binder.py
-        panels/addons_panel.py storybible_panel.py ...
+        widgets/editor.py spellcheck.py binder.py lore_wizard_dialog.py
+        panels/addons_panel.py storybible_panel.py draft_panel.py ...
     assets/theme/radix.qss  # Qt dark theme
     assets/piper/           # piper.exe + voice (run scripts/setup_piper.py)
     assets/styles.csv
@@ -144,7 +146,14 @@ Add Ons → Install inference engine retries the llama wheel only.
 Models
 
 Drop GGUF files into models/ or use Add Ons → Download writing models
-(or get_models.bat). Paths are editable in Settings → Models.
+(or get_models.bat). Already-valid files are skipped (GGUF header + size
+check); corrupt or tiny files are re-downloaded. Force a full re-fetch:
+
+  .venv\Scripts\python.exe scripts/download_models.py --force
+
+Filenames and paths live in config.py (MODEL_REGISTRY). Optional per-tier
+overrides go in data/global.json under "models".
+
 
 Image generation (ComfyUI) - optional
 
@@ -158,8 +167,9 @@ Add Ons → Audio pack: Install Piper. AllTalk folder is optional.
 USING IT (EDITOR-FIRST)
 =======================
 
-See USER_GUIDE.txt. Highlights: binder, Story Bible lightbox, Add Ons packs,
-Export compile, no AI chrome until a pack is on.
+See USER_GUIDE.txt. Highlights: binder, Story Bible lightbox (wizards and
+Fill from chapters when Local LLM is on), Draft lightbox (Generate Scenes +
+Plan Draft), Add Ons packs, Export compile. No AI chrome until a pack is on.
 
 
 SETTINGS CONTROL CENTER
@@ -167,3 +177,8 @@ SETTINGS CONTROL CENTER
 
 One panel (Settings on the left toolbar) controls the whole unit; changes persist to
 data/global.json / data/agents.json. See USER_GUIDE.txt section 10 for details.
+
+Editor → Write: style guides (My / Alt), optional Ghost text in the AI dock,
+Auto-scroll (off keeps the caret from jumping to the end while text streams),
+and prose constraints (anti-trope / pacing filter — on by default). Critics
+and Chat / Team jobs ignore those constraints unless they rewrite Write drafts.

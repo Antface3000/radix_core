@@ -317,8 +317,14 @@ class SettingsPanel(BasePanel):
         foc.setChecked(bool(s.get("editor.focus_mode", False)))
         self._bind("editor.focus_mode", foc)
         qf.addRow(foc)
-        ac = QCheckBox("Autocorrect as you type")
+        ac = QCheckBox("Autocorrect common typos only")
         ac.setChecked(bool(s.get("editor.autocorrect", False)))
+        ac.setToolTip(_tip(
+            "Fixes a small list of frequent typos (teh→the, recieve→receive, …)",
+            "when you type Space or Enter.",
+            "Does not rewrite names, dialect, or invented setting words.",
+            "Off by default.",
+        ))
         self._bind("editor.autocorrect", ac)
         qf.addRow(ac)
         notes = QCheckBox("Include fix-later notes in Write/Chat")
@@ -375,6 +381,24 @@ class SettingsPanel(BasePanel):
         wt_lbl = QLabel("Write temperature")
         wt_lbl.setToolTip(wt.toolTip())
         pf.addRow(wt_lbl, wt)
+
+        write_from = QComboBox()
+        write_from.addItem("Cursor", "cursor")
+        write_from.addItem("End of chapter", "end")
+        wf = s.get("editor.write_from", "cursor")
+        wf_idx = write_from.findData(wf if wf in ("cursor", "end") else "cursor")
+        write_from.setCurrentIndex(max(0, wf_idx))
+        write_from.setToolTip(_tip(
+            "Where Write continues and inserts.",
+            "Cursor — STORY SO FAR is text before the caret; draft inserts there.",
+            "End of chapter — full page context; draft inserts at the end.",
+            "A text selection always overrides this.",
+        ))
+        self._bind("editor.write_from", write_from)
+        wf_lbl = QLabel("Write continue from")
+        wf_lbl.setToolTip(write_from.toolTip())
+        pf.addRow(wf_lbl, write_from)
+
         cp = _persona_combo(s, s.get("editor.chat_persona", "quest_architect"))
         self._bind("editor.chat_persona", cp)
         pf.addRow("Chat persona", cp)
@@ -602,6 +626,12 @@ class SettingsPanel(BasePanel):
         ff = QLineEdit(s.get("editor.font_family") or config.EDITOR_FONT_FAMILY)
         self._bind("editor.font_family", ff)
         f.addRow("Editor font family", ff)
+        efs = QSpinBox()
+        efs.setRange(8, 72)
+        efs.setValue(int(s.get("editor.font_size", config.EDITOR_FONT_SIZE)))
+        efs.setToolTip("Manuscript editor font size (also on the editor toolbar)")
+        self._bind("editor.font_size", efs)
+        f.addRow("Editor font size", efs)
         lh = QSpinBox()
         lh.setRange(100, 250)
         lh.setValue(int(float(s.get("editor.line_height", config.EDITOR_LINE_HEIGHT)) * 100))

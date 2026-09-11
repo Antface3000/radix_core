@@ -55,7 +55,8 @@ _REMEMBER_NOTE = (
     "never leave a tag unclosed; do not write **[[REMEMBER]]**:\n"
     "- [[REMEMBER]] ... [[/REMEMBER]] — short lore fact with a clear name\n"
     "- [[CHARACTER:Name]] ... [[/CHARACTER]] — use field lines inside, e.g.\n"
-    "  role: protagonist\n  appearance: ...\n  goals: ...\n"
+    "  role: protagonist\n  pronouns: she/her\n  personality: ...\n"
+    "  appearance: ...\n  voiceStyle: ...\n  goals: ...\n"
     "- [[CREATURE:Name]] ... [[/CREATURE]] or [[SPECIES:Name]] ... [[/SPECIES]]\n"
     "  creatureType: ... | appearance: ... | powers: ...\n"
     "- [[WORLD]] ... [[/WORLD]] — place, faction, or region\n"
@@ -179,7 +180,8 @@ PERSONAS = [
             "- Show, don't tell. Vary sentence rhythm; avoid cliche and purple "
             "excess.\n"
             "- Output ONLY the next passage of prose - no headers, notes, or "
-            "commentary to the reader."
+            "commentary to the reader. Never acknowledge instructions "
+            "(do not write Okay, I understand, or similar). Start with story."
         ),
     },
     {

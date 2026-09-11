@@ -13,8 +13,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui_qt.widgets.themed_dialog import ThemedDialog
 
-class ClarifyDialog(QDialog):
+
+class ClarifyDialog(ThemedDialog):
     """Shows all clarifying questions at once with a prominent skip option.
 
     Result states after exec():

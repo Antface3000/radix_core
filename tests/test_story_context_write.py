@@ -18,6 +18,20 @@ class StoryContextWriteTests(unittest.TestCase):
         self.assertEqual(_strip_story_overlap(story, draft),
                          "and she stepped inside.")
 
+    def test_strip_write_preamble_constraint_ack(self):
+        from src.story_context import strip_write_preamble
+        raw = (
+            "Okay. I understand these are specific constraints for continuing "
+            "this narrative passage in a particular way.\n\n"
+            "She braced the hatch with her shoulder."
+        )
+        self.assertEqual(
+            strip_write_preamble(raw),
+            "She braced the hatch with her shoulder.")
+        self.assertEqual(
+            strip_write_preamble("Okay, she turned the wheel."),
+            "Okay, she turned the wheel.")
+
     def test_sanitize_write_output_strips_fence_and_overlap(self):
         story = "End of scene."
         raw = "```\nEnd of scene. New action here.\n```"

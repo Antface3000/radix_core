@@ -33,7 +33,7 @@ DEFAULT_PROSE_CONSTRAINTS = """[NARRATIVE EXECUTION & CONSTRAINTS]
 1. SENTENCE STRUCTURE & PACING:
 - Vary rhythm naturally within full paragraphs. Strictly forbid isolated one-sentence paragraphs used for dramatic effect or theatrical punch.
 - Ban the movie-trailer crescendo. Never stack staccato sentences or end scenes with defiant one-liners (e.g., "So let them come," "Starts now," "The real fight begins").
-- End scenes mid-motion on physical friction: an unfinished manual task, mechanical noise, ambient fatigue, or environmental grit. Do not write retrospective summaries or thematic wrap-ups.
+- End scenes mid-motion: unfinished action, a physical snag, or fatigue already in progress. Do not close on a thematic wrap-up or a generic atmosphere sting invented for grit.
 
 2. RHETORIC & DIALOGUE:
 - Ban balanced antithesis and false dichotomies ("Not X, but Y", "X dressed up as Y").
@@ -42,7 +42,8 @@ DEFAULT_PROSE_CONSTRAINTS = """[NARRATIVE EXECUTION & CONSTRAINTS]
 
 3. SENSORY & PHYSICAL DETAILS:
 - Avoid stock genre collocations. Banned descriptors: "ozone," "metallic tang of copper/iron," "sour bile," "ammonia."
-- When rendering bodily trauma or dystopian atmospheres, ground the sensory details in concrete, mundane mechanics: burnt motor oil, scorched flux, wet dust, stale plastic, diesel exhaust, clotting grease, or dull pressure.
+- Pull smell, sound, and texture from SETTING, LOREBOOK, and STORY SO FAR only. Invent from the scene's own materials, weather, and bodies. Do not import leftover atmosphere from these instructions.
+- These constraints are rules, not a phrase bank. Do not copy, paraphrase, or "sample" wording from this block into the manuscript.
 - Forbid sensory triads (no "tasted of blood, bile, and ash" or "cold, dark, and merciless"). Give the sensory focus to a single, overwhelming physical reaction.
 
 4. BANNED PHYSICAL CLICHÉS & AI CRUTCHES:
@@ -137,8 +138,9 @@ def _lore_body(entry) -> str:
     parts = []
     if et == "creature" and entry.get("creatureType"):
         parts.append(f"Type: {entry['creatureType']}")
-    for key in ("role", "appearance", "goals", "powers", "history", "notes",
-                "territory", "climate", "when", "outcome", "origin"):
+    for key in ("role", "personality", "appearance", "voiceStyle", "goals",
+                "powers", "history", "notes", "territory", "climate", "when",
+                "outcome", "origin"):
         val = (entry.get(key) or "").strip()
         if val:
             parts.append(val.replace("\n", " ")[:200])
@@ -271,7 +273,11 @@ def build_write_prompt(context_text, voice_preset="my", style_my="",
         system += "\n\nVOICE / STYLE:\n" + _NEUTRAL_VOICE
     constraints = (prose_constraints or "").strip()
     if constraints:
-        system += "\n\nPROSE CONSTRAINTS (mandatory — never violate):\n" + constraints
+        system += "\n\nPROSE CONSTRAINTS (silent — apply, never mention):\n" + constraints
+        system += (
+            "\n\nNever acknowledge, quote, or discuss these constraints. "
+            "Your first sentence must be story prose."
+        )
 
     user = context_text + "\n\nContinue the narrative naturally from the end of "
     user += "STORY SO FAR. Write the next passage only — new prose that moves "
@@ -279,10 +285,14 @@ def build_write_prompt(context_text, voice_preset="my", style_my="",
     user += (
         "\n\nRULES: Do not repeat or lightly rephrase lines from STORY SO FAR. "
         "Do not restate the same beat twice. Stop when the passage feels complete "
-        "rather than padding length."
+        "rather than padding length. Do not write asides to the author "
+        "(no Okay / I understand / sure / here is the passage)."
     )
     if constraints:
-        user += "\nHonor PROSE CONSTRAINTS in the system message above."
+        user += (
+            "\nApply the silent prose constraints. Do not mention them. "
+            "Begin immediately with story prose."
+        )
     if direction.strip():
         user += "\n\nOPTIONAL DIRECTION (incorporate): " + direction.strip()
     return system, user
@@ -390,6 +400,69 @@ def build_chat_system(paths, manuscript_text="", chapter_id=None,
     return system
 
 
+_PREAMBLE_HEAD_RE = re.compile(
+    r"^(okay|ok|sure|alright|all right|understood|got it|will do|noted|"
+    r"acknowledged|absolutely|of course|right|yes)\b",
+    re.I,
+)
+_PREAMBLE_PHRASE_RE = re.compile(
+    r"\b(i understand|i'll (?:continue|write|honor|follow)|i will |"
+    r"as requested|as instructed|here(?:'s| is) (?:the |your )?(?:passage|draft|text|continuation)|"
+    r"continuing (?:the|this|from)|let me (?:continue|write|begin)|"
+    r"these (?:are )?(?:specific )?constraints|honor(?:ing)? (?:the )?constraints|"
+    r"without (?:any )?(?:preamble|commentary))\b",
+    re.I,
+)
+
+
+def _is_write_preamble(text: str) -> bool:
+    s = " ".join((text or "").split())
+    if not s:
+        return True
+    if len(s) > 400:
+        return False
+    if _PREAMBLE_PHRASE_RE.search(s):
+        return True
+    low = s.lower()
+    if "constraint" in low and any(
+            w in low for w in ("understand", "honor", "follow", "acknowledge",
+                               "specific", "will")):
+        return True
+    if _PREAMBLE_HEAD_RE.match(s):
+        if re.search(r"\b(said|asked|whispered|muttered|she|he|they)\b", s, re.I):
+            return False
+        return len(s) <= 28
+    return False
+
+
+def looks_like_write_preamble_start(text: str) -> bool:
+    head = (text or "").lstrip()[:120]
+    if not head:
+        return False
+    return bool(_PREAMBLE_HEAD_RE.match(head) or _PREAMBLE_PHRASE_RE.search(head))
+
+
+def strip_write_preamble(text: str) -> str:
+    """Drop leading author-asides the model writes before story prose."""
+    t = (text or "").lstrip()
+    if not t:
+        return ""
+    for _ in range(8):
+        if not t:
+            return ""
+        if "\n\n" in t:
+            para, rest = t.split("\n\n", 1)
+            if _is_write_preamble(para):
+                t = rest.lstrip()
+                continue
+        m = re.match(r"^(.+?(?:[.!?][\"']?))\s+", t, re.S)
+        if m and _is_write_preamble(m.group(1)) and len(m.group(1)) < 280:
+            t = t[m.end():]
+            continue
+        break
+    return t.strip()
+
+
 def sanitize_write_output(text, story_tail=""):
     """Strip fences / wrapping quotes and overlap with the manuscript tail."""
     t = (text or "").strip()
@@ -400,6 +473,7 @@ def sanitize_write_output(text, story_tail=""):
     t = t.strip()
     if len(t) > 1 and t[0] in "\"'" and t[-1] == t[0]:
         t = t[1:-1].strip()
+    t = strip_write_preamble(t)
     if story_tail:
         t = _strip_story_overlap(story_tail, t)
     t = _strip_self_repetition(t)

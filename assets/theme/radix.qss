@@ -122,6 +122,18 @@ QDoubleSpinBox {
     padding: 4px 6px;
 }
 
+/* Manuscript: font family/size come from code (widget QSS) so they persist
+   over the global * { font-size: 13px } rule. Colors still match inputs. */
+QPlainTextEdit#ManuscriptEditor {
+    background-color: #0A120A;
+    color: #E4ECD0;
+    border: 1px solid #243018;
+    border-radius: 8px;
+    selection-background-color: #5B7A1E;
+    selection-color: #F2F8E2;
+    padding: 4px 6px;
+}
+
 QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QComboBox:focus,
 QSpinBox:focus, QDoubleSpinBox:focus {
     border: 1px solid #93BA00;
@@ -285,6 +297,33 @@ QPushButton[secondary="true"] {
 QPushButton[secondary="true"]:hover {
     background-color: #243018;
     border-color: #93BA00;
+}
+
+/* FeatureLightbox / Find lightbox header close (×) */
+QPushButton#FeatureCloseButton {
+    background-color: #1A2912;
+    color: #E4ECD0;
+    border: 1px solid #5B7A1E;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 700;
+    padding: 0;
+    min-width: 30px;
+    max-width: 30px;
+    min-height: 30px;
+    max-height: 30px;
+}
+
+QPushButton#FeatureCloseButton:hover {
+    background-color: #E03A3A;
+    color: #FFFFFF;
+    border-color: #E03A3A;
+}
+
+QPushButton#FeatureCloseButton:pressed {
+    background-color: #B32D2D;
+    color: #FFFFFF;
+    border-color: #B32D2D;
 }
 
 /* ---------- menus ---------- */

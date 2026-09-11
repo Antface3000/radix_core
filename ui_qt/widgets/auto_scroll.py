@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QCheckBox, QPlainTextEdit, QTextEdit, QWidget
 
 SETTING_KEY = "ui.panel_auto_scroll"
@@ -34,8 +35,27 @@ def set_auto_scroll(app, enabled: bool) -> None:
             cb.blockSignals(False)
 
 
+def is_auto_scroll(app) -> bool:
+    return bool(app.settings.get(SETTING_KEY, True))
+
+
 def scroll_to_end(widget: QPlainTextEdit | QTextEdit, app) -> None:
-    if not app.settings.get(SETTING_KEY, True):
+    if not is_auto_scroll(app):
         return
     sb = widget.verticalScrollBar()
     sb.setValue(sb.maximum())
+
+
+def append_without_forced_scroll(widget: QPlainTextEdit | QTextEdit, text: str,
+                                 app) -> None:
+    """Insert at the document end. Jump the viewport only if auto-scroll is on.
+
+    Moving the widget's text cursor to End always reveals that position in Qt,
+    which ignored the Auto-scroll checkbox.
+    """
+    if not text:
+        return
+    cur = QTextCursor(widget.document())
+    cur.movePosition(QTextCursor.MoveOperation.End)
+    cur.insertText(text)
+    scroll_to_end(widget, app)

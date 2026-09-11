@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
+    QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLineEdit, QLabel, QPlainTextEdit, QCheckBox, QMessageBox,
     QInputDialog,
 )
 
 from src import snapshots, project_search, chapter_notes, chapters
+from ui_qt.widgets.themed_dialog import ThemedDialog
 
 
-class SnapshotDialog(QDialog):
+class SnapshotDialog(ThemedDialog):
     def __init__(self, app, chapter_id: str, parent=None):
         super().__init__(parent)
         self.app = app
@@ -89,7 +90,7 @@ class SnapshotDialog(QDialog):
         self.accept()
 
 
-class ProjectSearchDialog(QDialog):
+class ProjectSearchDialog(ThemedDialog):
     def __init__(self, app, parent=None):
         super().__init__(parent)
         self.app = app
@@ -157,7 +158,7 @@ class ProjectSearchDialog(QDialog):
         self.accept()
 
 
-class NotesDialog(QDialog):
+class NotesDialog(ThemedDialog):
     def __init__(self, app, chapter_id: str, parent=None):
         super().__init__(parent)
         self.app = app

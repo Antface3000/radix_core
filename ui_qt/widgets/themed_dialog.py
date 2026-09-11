@@ -13,3 +13,9 @@ class ThemedDialog(QDialog):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setObjectName("ThemedDialog")
+        self.setSizeGripEnabled(True)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        from ui_qt.window_geom import fit_widget
+        fit_widget(self)

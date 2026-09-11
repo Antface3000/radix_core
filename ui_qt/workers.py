@@ -425,3 +425,126 @@ class FieldGenerateWorker(QThread):
         except Exception:
             cancelled = True
         self.finished_ok.emit(cancelled, self._buffer)
+
+
+class LoreWizardWorker(QThread):
+    """Two-phase Story Bible wizard: questions JSON, then field-fill JSON."""
+
+    finished_ok = Signal(bool, object)  # cancelled, parsed payload
+
+    def __init__(self, app, phase: str, kind: str, seed: str = "",
+                 existing=None, answers=None):
+        super().__init__()
+        self.app = app
+        self.phase = phase  # questions | fill
+        self.kind = kind
+        self.seed = seed
+        self.existing = dict(existing or {})
+        self.answers = dict(answers or {})
+
+    def run(self):
+        from src import lore_wizard, worldcontext
+
+        engine = self.app.engine
+        paths = engine.paths
+        cancelled = False
+        try:
+            setting = worldcontext.assemble(paths) if paths else ""
+            persona = lore_wizard.persona_for_kind(self.kind)
+            if self.phase == "fill":
+                system, user = lore_wizard.build_fill_prompt(
+                    self.kind, seed=self.seed, answers=self.answers,
+                    existing=self.existing, setting=setting)
+                temperature = persona.get("temperature") or 0.5
+                max_tokens = 2200
+            else:
+                system, user = lore_wizard.build_questions_prompt(
+                    self.kind, seed=self.seed, existing=self.existing,
+                    setting=setting)
+                temperature = 0.35
+                max_tokens = 1200
+            buf = ""
+            for chunk in engine.stream_prompt(
+                    persona.get("model_key") or "architect", system, user,
+                    temperature=temperature, max_tokens=max_tokens,
+                    show_think=False):
+                if engine.is_cancelled():
+                    cancelled = True
+                    break
+                buf += chunk
+            if engine.is_cancelled():
+                cancelled = True
+            if cancelled:
+                self.finished_ok.emit(True, None)
+                return
+            if self.phase == "fill":
+                result = lore_wizard.complete_fill(
+                    buf, self.kind, seed=self.seed, answers=self.answers)
+                if not lore_wizard.fill_has_content(result):
+                    from src.logutil import get_logger
+                    get_logger("lore_wizard").warning(
+                        "Wizard fill returned no fields (%s chars)", len(buf))
+            else:
+                result = lore_wizard.parse_questions(buf, self.kind)
+            self.finished_ok.emit(False, result)
+        except Exception:
+            from src.logutil import get_logger
+            get_logger("lore_wizard").exception("Wizard %s failed", self.phase)
+            if self.phase == "fill":
+                self.finished_ok.emit(
+                    False,
+                    lore_wizard.complete_fill(
+                        "", self.kind, seed=self.seed, answers=self.answers),
+                )
+            else:
+                self.finished_ok.emit(
+                    False, lore_wizard.fallback_questions(self.kind))
+
+
+class ManuscriptFillWorker(QThread):
+    """One architect-tier pass: extract definite canon fields from chapters."""
+
+    finished_ok = Signal(bool, object)  # cancelled, payload
+
+    def __init__(self, app, chapter_ids, prefer_id=None):
+        super().__init__()
+        self.app = app
+        self.chapter_ids = list(chapter_ids or [])
+        self.prefer_id = prefer_id
+
+    def run(self):
+        from src import lore_wizard, manuscript_fill
+
+        engine = self.app.engine
+        paths = engine.paths
+        try:
+            packed = manuscript_fill.collect_manuscript(
+                paths, self.chapter_ids, prefer_id=self.prefer_id)
+            craft = manuscript_fill.infer_craft(packed["text"])
+            if not packed["text"].strip():
+                self.finished_ok.emit(False, manuscript_fill.merge_heuristics(
+                    manuscript_fill.empty_payload(), craft))
+                return
+            setting = manuscript_fill.gather_setting(paths)
+            persona = lore_wizard.persona_for_kind("canon")
+            system, user = manuscript_fill.build_fill_prompt(
+                paths, packed["text"], setting=setting)
+            buf = ""
+            for chunk in engine.stream_prompt(
+                    persona.get("model_key") or "architect", system, user,
+                    temperature=0.25, max_tokens=2800, show_think=False):
+                if engine.is_cancelled():
+                    self.finished_ok.emit(True, None)
+                    return
+                buf += chunk
+            if engine.is_cancelled():
+                self.finished_ok.emit(True, None)
+                return
+            parsed = manuscript_fill.parse_payload(buf)
+            self.finished_ok.emit(
+                False, manuscript_fill.merge_heuristics(parsed, craft))
+        except Exception:
+            from src.logutil import get_logger
+            get_logger("manuscript_fill").exception("Chapter fill failed")
+            self.finished_ok.emit(False, manuscript_fill.empty_payload())
+

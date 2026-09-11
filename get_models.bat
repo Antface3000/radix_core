@@ -12,6 +12,7 @@ if not exist ".venv\Scripts\python.exe" (
 
 echo ============================================================
 echo  Downloading the Radix Core AI models (about 15 GB).
+echo  Healthy files already in models\ are skipped.
 echo  This can take a while depending on your internet speed.
 echo  You can keep using your computer while it runs.
 echo ============================================================

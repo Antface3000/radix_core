@@ -9,7 +9,6 @@ from PySide6.QtGui import QColor, QTextCursor
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDialog,
     QDialogButtonBox,
     QGroupBox,
     QHBoxLayout,
@@ -38,8 +37,11 @@ from ui_qt.panels.base import BasePanel
 from ui_qt.stream_throttle import StreamThrottler
 from ui_qt.workers import AgentWorker, PlanWorker
 from ui_qt.widgets.activity_indicator import ActivityStatus
-from ui_qt.widgets.auto_scroll import make_auto_scroll_checkbox, scroll_to_end
+from ui_qt.widgets.auto_scroll import (
+    append_without_forced_scroll, make_auto_scroll_checkbox,
+)
 from ui_qt.widgets.flow_layout import FlowLayout
+from ui_qt.widgets.themed_dialog import ThemedDialog
 
 log = get_logger("team")
 
@@ -57,7 +59,7 @@ _STATUS_PREFIX = {
 }
 
 
-class _CaptureDialog(QDialog):
+class _CaptureDialog(ThemedDialog):
     def __init__(self, parent, initial=""):
         super().__init__(parent)
         self.setWindowTitle("Capture canon from text")
@@ -523,7 +525,7 @@ class TeamPanel(BasePanel):
         text = worldcontext.assemble(
             paths,
             max_chars=int(self.app.settings.get("context.inject_max_chars", 6000)))
-        dlg = QDialog(self)
+        dlg = ThemedDialog(self)
         dlg.setWindowTitle("Setting preview")
         dlg.resize(560, 420)
         v = QVBoxLayout(dlg)
@@ -555,7 +557,7 @@ class TeamPanel(BasePanel):
         if not paths:
             return
         dlg = _CaptureDialog(self, self.last_response)
-        if dlg.exec() != QDialog.DialogCode.Accepted:
+        if dlg.exec() != ThemedDialog.DialogCode.Accepted:
             return
         raw = dlg.text.toPlainText().strip()
         if not raw:
@@ -820,8 +822,8 @@ class TeamPanel(BasePanel):
     def _append_block(self, who: str, text: str):
         cur = self.chat.toPlainText()
         prefix = "\n\n" if cur else ""
-        self.chat.appendPlainText(f"{prefix}[{who}]\n{text}")
-        scroll_to_end(self.chat, self.app)
+        append_without_forced_scroll(
+            self.chat, f"{prefix}[{who}]\n{text}", self.app)
         if self._report_kind is not None and who != "You":
             self._transcript.append([str(who), text or ""])
 
@@ -853,11 +855,7 @@ class TeamPanel(BasePanel):
             log.exception("Run report write failed")
 
     def _append_text_chunk(self, text: str):
-        cursor = self.chat.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        cursor.insertText(text)
-        self.chat.setTextCursor(cursor)
-        scroll_to_end(self.chat, self.app)
+        append_without_forced_scroll(self.chat, text, self.app)
 
     def _flush_status(self):
         if self._pending_status and self._busy:

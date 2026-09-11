@@ -23,11 +23,14 @@ def _comma_split(text: str) -> list[str]:
 
 class LoreEntryForm(QWidget):
     changed = Signal()
+    typeChanged = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._field_widgets: dict[str, QLineEdit | QPlainTextEdit] = {}
         self._building = False
+        self._stash: dict = {}
+        self._generate_cb = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -81,28 +84,83 @@ class LoreEntryForm(QWidget):
     def _on_type_changed(self):
         if self._building:
             return
+        self._stash_widgets()
         et = self.entry_type.currentData()
         self._rebuild_fields(et)
+        self._apply_stash()
         self._emit_changed()
+        self.typeChanged.emit()
 
     def _rebuild_fields(self, entry_type: str):
+        was_building = self._building
         self._building = True
         self._clear_dynamic_fields()
         for key, label, multiline in lore_types.fields_for_entry_type(entry_type):
             if multiline:
                 w = QPlainTextEdit()
-                w.setMaximumHeight(72)
+                w.setMinimumHeight(64)
+                w.setMaximumHeight(140)
                 w.textChanged.connect(self._emit_changed)
             else:
                 w = QLineEdit()
                 w.textChanged.connect(self._emit_changed)
             self._field_widgets[key] = w
             self._form.addRow(label, w)
+        self._apply_generate_menu()
+        self._building = was_building
+
+    def _read_widget(self, key: str, widget) -> object:
+        if isinstance(widget, QPlainTextEdit):
+            val = widget.toPlainText().strip()
+        else:
+            val = widget.text().strip()
+        if key in ("keywords", "aliases", "tags", "groups"):
+            return _comma_split(val)
+        if key == "relationships":
+            return lore_types.parse_relationships(val)
+        return val
+
+    def _write_widget(self, key: str, widget, val) -> None:
+        if key in ("keywords", "aliases", "tags", "groups"):
+            text = _comma_join(val)
+        elif key == "relationships":
+            text = lore_types.format_relationships(val)
+        else:
+            text = str(val or "")
+        if isinstance(widget, QPlainTextEdit):
+            widget.setPlainText(text)
+        else:
+            widget.setText(text)
+
+    def _stash_widgets(self):
+        for key, widget in self._field_widgets.items():
+            self._stash[key] = self._read_widget(key, widget)
+        self._stash["name"] = self.name.text().strip()
+        self._stash["pinned"] = self.pinned.isChecked()
+        self._stash["alwaysInclude"] = self.always_include.isChecked()
+        self._stash["priority"] = self.priority.value()
+        self._stash["entryType"] = self.entry_type.currentData()
+
+    def _apply_stash(self):
+        self._building = True
+        self.name.setText(self._stash.get("name") or self.name.text())
+        if "pinned" in self._stash:
+            self.pinned.setChecked(bool(self._stash.get("pinned")))
+        if "alwaysInclude" in self._stash:
+            self.always_include.setChecked(bool(self._stash.get("alwaysInclude")))
+        try:
+            self.priority.setValue(int(self._stash.get("priority") or 0))
+        except (TypeError, ValueError):
+            pass
+        for key, widget in self._field_widgets.items():
+            if key in self._stash:
+                self._write_widget(key, widget, self._stash.get(key))
         self._building = False
 
     def load_entry(self, entry: dict | None):
         self._building = True
         entry = entry or {}
+        self._stash = dict(entry)
         et = entry.get("entryType") or "character"
         idx = self.entry_type.findData(et)
         if idx >= 0:
@@ -116,49 +174,39 @@ class LoreEntryForm(QWidget):
         except (TypeError, ValueError):
             self.priority.setValue(0)
         for key, widget in self._field_widgets.items():
-            val = entry.get(key)
-            if key in ("keywords", "aliases", "tags"):
-                text = _comma_join(val)
-            elif key == "relationships":
-                text = lore_types.format_relationships(val)
-            else:
-                text = str(val or "")
-            if isinstance(widget, QPlainTextEdit):
-                widget.setPlainText(text)
-            else:
-                widget.setText(text)
+            self._write_widget(key, widget, entry.get(key))
         self._building = False
 
     def to_entry_dict(self, base: dict | None = None) -> dict:
+        self._stash_widgets()
         base = dict(base or {})
+        out = {**base, **self._stash}
+        if base.get("id"):
+            out["id"] = base["id"]
         et = self.entry_type.currentData() or "character"
         storage = lore_types.storage_for_entry_type(et)
-        out = {
-            **base,
+        out.update({
             "name": self.name.text().strip() or "Untitled",
             "entryType": et,
             "type": storage,
             "pinned": self.pinned.isChecked(),
             "alwaysInclude": self.always_include.isChecked(),
             "priority": self.priority.value(),
-        }
+        })
         for key, widget in self._field_widgets.items():
-            if isinstance(widget, QPlainTextEdit):
-                val = widget.toPlainText().strip()
-            else:
-                val = widget.text().strip()
-            if key in ("keywords", "aliases", "tags"):
-                out[key] = _comma_split(val)
-            elif key == "relationships":
-                out[key] = lore_types.parse_relationships(val)
-            else:
-                out[key] = val
+            out[key] = self._read_widget(key, widget)
         if out.get("notes"):
             out["description"] = out["notes"]
         return out
 
     def wire_generate_menu(self, callback):
         """Right-click Generate on all multiline fields."""
+        self._generate_cb = callback
+        self._apply_generate_menu()
+
+    def _apply_generate_menu(self):
+        if not self._generate_cb:
+            return
         for key, widget in self._field_widgets.items():
             if isinstance(widget, QPlainTextEdit):
-                callback(widget, f"Lore — {key}")
+                self._generate_cb(widget, f"Lore — {key}")

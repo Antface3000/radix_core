@@ -29,6 +29,11 @@ def get_open_file_name(parent, caption, directory="", filter=""):
         parent, caption, directory, filter, options=_FILE_OPTS)
 
 
+def get_open_file_names(parent, caption, directory="", filter=""):
+    return QFileDialog.getOpenFileNames(
+        parent, caption, directory, filter, options=_FILE_OPTS)
+
+
 def get_save_file_name(parent, caption, directory="", filter=""):
     return QFileDialog.getSaveFileName(
         parent, caption, directory, filter, options=_FILE_OPTS)

@@ -1,8 +1,8 @@
 """Shared labels for Editor vs Team surfaces."""
 
 EDITOR_AI_SUBTITLE = (
-    "Manuscript modes — Write continues prose; Chat discusses the project. "
-    "Specialists and team jobs live in the Team panel."
+    "Manuscript modes — Write continues prose (from cursor or end of chapter); "
+    "Chat discusses the project. Specialists and team jobs live in the Team panel."
 )
 
 TEAM_SUBTITLE = (
@@ -12,7 +12,9 @@ TEAM_SUBTITLE = (
 
 EDITOR_MODE_TIPS = {
     "Write": (
-        "Continue prose from the manuscript (Prose Writer + optional Line Editor). "
+        "Continue prose (Prose Writer + optional Line Editor). "
+        "Continue from: Cursor uses text before the caret; End of chapter "
+        "uses the full page and inserts at the end. A selection always wins. "
         "Use Instructions for scene-specific direction."
     ),
     "Chat": (

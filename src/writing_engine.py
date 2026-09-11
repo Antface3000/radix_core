@@ -17,8 +17,8 @@ class WritingEngine:
         head = f"{ctx_text}\n\nDRAFT PASSAGE:\n{draft}\n\n"
         constraints = (prose_constraints or "").strip()
         constraint_note = (
-            "\nAlso honor these PROSE CONSTRAINTS (do not reintroduce banned "
-            "tropes or structures):\n" + constraints + "\n"
+            "\nApply these silent PROSE CONSTRAINTS (do not mention them or "
+            "reintroduce banned tropes or structures):\n" + constraints + "\n"
             if constraints else "")
         if critic_key == "lore_curator":
             return (head +
@@ -119,6 +119,8 @@ class WritingEngine:
                 show_think=show_think):
             yield ("delta", gw, delta)
         _, draft = eng._last_generation
+        draft = story_context.sanitize_write_output(
+            draft, story_tail=before_cursor)
         yield ("stage_draft", gw, draft)
         yield ("step_done", gw)
 
@@ -156,6 +158,24 @@ class WritingEngine:
 
         yield ("final", story_context.sanitize_write_output(
             draft, story_tail=before_cursor))
+
+    def editor_plan_draft(self, before_cursor, chapter_id, beats, extra="",
+                          pov="", tense="", perspective="", parking="",
+                          show_think=False):
+        """Single Write pass covering every Draft scene beat."""
+        from src import draft_engine
+        direction = draft_engine.build_plan_draft_direction(
+            beats, extra=extra, pov=pov, tense=tense, perspective=perspective)
+        note_parts = []
+        if extra.strip():
+            note_parts.append(extra.strip())
+        dump = (parking or "").strip()
+        if dump:
+            note_parts.append("BRAIN DUMP (not canon):\n" + dump[:2000])
+        yield from self.editor_write(
+            before_cursor, chapter_id,
+            author_note="\n\n".join(note_parts),
+            direction=direction, show_think=show_think)
 
     def _voice_samples(self) -> str:
         import os

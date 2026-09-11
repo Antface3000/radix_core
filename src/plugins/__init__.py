@@ -11,7 +11,7 @@ PACK_LABELS = {
 }
 
 PACK_PANELS = {
-    "llm": ("Team",),
+    "llm": ("Team", "Draft"),
     "image": ("Image Gen",),
     "audio": ("Voice",),
 }

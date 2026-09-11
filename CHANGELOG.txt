@@ -1,13 +1,108 @@
 CHANGELOG
 =========
 
-All notable changes to Radix Core are documented here.
+All notable changes to Radix Core are documented here (release notes and
+development log). Newest work sits under [UNRELEASED] until the next version
+bump (see RELEASE.txt / scripts/release.py).
 
 Format loosely based on Keep a Changelog. Versioning follows Semantic Versioning.
 
 
 [UNRELEASED]
 ============
+
+Added
+-----
+- Story Bible wizards (Local LLM pack): Lorebook Wizard… / Fill with wizard,
+  Bible → Canon wizard, and World State → World wizard. Two architect-tier
+  calls (interview JSON, then field JSON); chip + text answers; preview with
+  Replace (otherwise fill blanks only).
+- Fill from chapters… (Story Bible + Draft, Local LLM pack): audit one or
+  more chapters and propose definite Story Bible, World State, outline,
+  chapter meta, and lore fields. Preview with per-field checkboxes; default
+  fills blanks only. Heuristic POV/tense used only when the model omits them.
+- Draft lightbox (Local LLM pack): Generate Scenes from the chapter outline,
+  Focus research parking lot, and scored lore; edit beats (saved to that
+  chapter’s outline); Plan Draft writes one prose passage covering every
+  scene into the editor draft bar / ghost text.
+- Editor → Write prose constraints (Settings → Editor): mandatory anti-trope /
+  pacing / sensory rules injected into the Prose Writer and rewrite critics.
+  Toggle “Apply prose constraints on Write”, editable text, Restore defaults.
+  Sensory rules no longer list copyable grit examples (motor oil / plastic /
+  exhaust) that the model was parroting into the manuscript.
+- GGUF integrity checks (GGUF magic + minimum size). Add Ons / download_models.py
+  skip healthy files and re-download missing or corrupt ones. CLI: --force to
+  re-fetch valid files.
+- Ghost text (inline Write): stream provisional prose into the manuscript;
+  Tab accept / Esc dismiss. Status and checkbox tooltips wrap instead of clipping.
+- Find lightbox (toolbar Find / Ctrl+F) with case, whole-word, and regex options.
+- Snapshot labels with readable local time and word count; optional title on
+  manual Snapshot now. On-disk names use YYYY-MM-DD_HHMMSS__timed|manual|on-close.
+- Wrapping FlowLayout on editor/tool bars and several panels so controls reflow
+  instead of clipping in narrow lightboxes.
+- Themed app-wide QSS for dialogs and file pickers; clearer Add Ons welcome /
+  pack install steps.
+- Multi-file Import for Markdown / TXT / DOCX chapters.
+- Lorebook people fields match Sudowrite character cards: personality, groups,
+  physical description, dialogue style. Story Bible → Lorebook → Import CSV…
+  upserts a Sudowrite character export.
+
+Changed
+-------
+- Model download buttons only fetch keys that fail the integrity check; status
+  shows healthy vs present-but-corrupt vs missing.
+- Editor LLM toolbar actions use QPushButton (reliable clicks in FlowLayout);
+  buttons stay visible and toast if the required pack is off.
+- Side view (formerly Split) labeling clarified for the read-only reference pane.
+- Chapter meta strip (POV / Location / Date) labeled with binder-tooltips;
+  empty status chips hidden.
+- Canon Audit / Focus continuity: single-click jumps to lore without closing
+  Focus; Story Bible stays open when jumping from audit.
+- Left feature rail buttons use equal widths.
+- Autocorrect is typos-only (curated list); no longer auto-applies single
+  spellcheck suggestions that mangled names and dialect.
+- Lore re-audit “unmapped proper noun” scan uses original casing + English
+  dictionary filter (no more Against/Way/Can false positives from .title()).
+- Feature lightbox × close control styled as a real close button (hover red).
+- Story Bible Bible/World tabs scroll; lightbox geometry honors shrunk sizes.
+- Project launcher no longer auto-opens the last manuscript. Last project is
+  highlighted and available via Open last / Open selected; closing the splash
+  leaves the studio empty.
+- README.txt, INSTALL.txt, and USER_GUIDE.txt cover Draft, Story Bible
+  wizards, Fill from chapters, chip answers, and Auto-scroll.
+
+Fixed
+-----
+- Story Bible wizard interview no longer crashes when answer chips appear
+  (FlowLayout show/hide was re-entering layout) or if the dialog is closed
+  while the model is still running.
+- Wizard chips now write into the answer box (and remove themselves when
+  unchecked) instead of only toggling.
+- Wizard fill no longer previews “nothing generated” / creates an empty
+  card: JSON-only prompt (no Surface/Shadow or canon markers), recover
+  fields from wrapped/aliased JSON or the interview, and block Apply
+  when nothing usable came back.
+- Auto-scroll unchecked no longer jumps the AI dock, Team chat, or ghost text
+  to the end (Qt was revealing the insert cursor regardless of the checkbox).
+- Editor Write no longer keeps “Okay, I understand these constraints…”
+  preambles: prompts forbid acknowledging rules; sanitize strips them.
+- Image Gen Stop wired to ComfyUI interrupt; lore.audit_orphan_scan bound in
+  Settings; Voice engine combo persists on change.
+- Ghost text / long QToolTip truncation (removed QSS max-width trap; status
+  line word-wraps).
+- Continuity / lore-audit notes now open the matching Lorebook entry. A missing
+  name (unmapped proper noun) starts a new card prefilled with the name,
+  keywords, manuscript quotes, and pronouns only when those are definite.
+- Pop-out lightboxes and dialogs clamp to the usable screen (taskbar, DPI,
+  disconnected monitors). Saved sizes that overflow are shrunk instead of
+  opening off-screen.
+- Story Bible Lorebook: changing entry type (Person → Place, etc.) keeps notes,
+  keywords, and other shared fields and saves the new type immediately.
+- Editor Write “Continue from”: Cursor (default) uses text before the caret and
+  inserts there; End of chapter uses the full page and inserts at the end. A
+  selection still overrides. Combo on the AI dock and in Settings → Editor.
+- Manuscript font size now persists across sessions (widget stylesheet overrides
+  the global QSS 13px rule that was ignoring setFont).
 
 
 [1.0.0] - 2026-08-19

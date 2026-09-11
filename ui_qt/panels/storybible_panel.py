@@ -23,21 +23,25 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QDialog,
     QMessageBox,
+    QScrollArea,
+    QSizePolicy,
 )
 
 from src import story_bible, lore, world_state, outline, export as export_mod
-from src import lore_types, lore_migrate
+from src import lore_types, lore_migrate, lore_wizard
 from src import worldcontext
 from src.story_bible_gen import MODE_LABELS
 from src.logutil import get_logger
 from ui_qt.ambiguity_gate import run_ambiguity_gate
 from ui_qt.panels.base import BasePanel
-from ui_qt.theme import get_save_file_name
+from ui_qt.theme import get_open_file_names, get_save_file_name
 from ui_qt.widgets.field_generate_dialog import FieldGenerateDialog
 from ui_qt.widgets.activity_indicator import ActivityStatus
 from ui_qt.widgets.flow_layout import FlowLayout
 from ui_qt.widgets.lore_entry_form import LoreEntryForm
 from ui_qt.widgets.lore_audit_dialog import run_lore_audit_dialog
+from ui_qt.widgets.lore_wizard_dialog import LoreWizardDialog
+from ui_qt.widgets.manuscript_fill_dialog import run_manuscript_fill
 from ui_qt.workers import FieldGenerateWorker
 
 log = get_logger("storybible")
@@ -93,6 +97,7 @@ class StoryBiblePanel(BasePanel):
         self._gen_start_text = ""
         self._gen_accum = ""
         self._lore_loaded_id: str | None = None
+        self._pending_lore_id: str | None = None
         self._lore_filter = "all"
 
         layout = QVBoxLayout(self)
@@ -271,11 +276,28 @@ class StoryBiblePanel(BasePanel):
     def _build_bible_tab(self):
         tab = QWidget()
         v = QVBoxLayout(tab)
+        bible_tools = QHBoxLayout()
+        canon_wiz = QPushButton("Canon wizard")
+        canon_wiz.setToolTip(
+            "Interview the model to fill premise, tone, rules, style, and synopsis")
+        canon_wiz.clicked.connect(self._canon_wizard)
+        bible_tools.addWidget(canon_wiz)
+        fill_ch = QPushButton("Fill from chapters…")
+        fill_ch.setToolTip(
+            "Audit chapter text and fill definite Story Bible, world, outline, "
+            "chapter meta, and lore fields")
+        fill_ch.clicked.connect(self._fill_from_chapters)
+        bible_tools.addWidget(fill_ch)
+        bible_tools.addStretch()
+        v.addLayout(bible_tools)
         form = QFormLayout()
         for key, label, multiline in _BIBLE_FIELDS:
             if multiline:
                 field = QPlainTextEdit()
-                field.setMaximumHeight(120)
+                field.setMinimumHeight(72)
+                field.setMaximumHeight(220)
+                field.setSizePolicy(
+                    QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             else:
                 field = QLineEdit()
             field.textChanged.connect(lambda _=None: setattr(self, "_dirty", True))
@@ -284,7 +306,11 @@ class StoryBiblePanel(BasePanel):
             form.addRow(label, field)
         v.addLayout(form)
         v.addStretch()
-        self.tabs.addTab(tab, "Bible")
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setWidget(tab)
+        self.tabs.addTab(scroll, "Bible")
 
     def _build_lore_tab(self):
         tab = QWidget()
@@ -300,6 +326,21 @@ class StoryBiblePanel(BasePanel):
         add_btn = QPushButton("Add entry")
         add_btn.clicked.connect(self._add_lore)
         row.addWidget(add_btn)
+        wizard_btn = QPushButton("Wizard…")
+        wizard_btn.setToolTip("Interview the model and create a new lore entry")
+        wizard_btn.clicked.connect(self._lore_wizard_new)
+        row.addWidget(wizard_btn)
+        fill_btn = QPushButton("Fill with wizard")
+        fill_btn.setProperty("secondary", True)
+        fill_btn.setToolTip("Interview the model to fill the current card")
+        fill_btn.clicked.connect(self._lore_wizard_fill)
+        row.addWidget(fill_btn)
+        from_ch = QPushButton("Fill from chapters…")
+        from_ch.setProperty("secondary", True)
+        from_ch.setToolTip(
+            "Audit chapter text and propose lore cards plus bible/world fields")
+        from_ch.clicked.connect(self._fill_from_chapters)
+        row.addWidget(from_ch)
         upgrade_btn = QPushButton("Upgrade legacy…")
         upgrade_btn.setProperty("secondary", True)
         upgrade_btn.setToolTip("Re-infer entry types and persist normalized lore")
@@ -310,6 +351,13 @@ class StoryBiblePanel(BasePanel):
         reaudit_btn.setToolTip("Check lore entries make sense; offer automatic fixes")
         reaudit_btn.clicked.connect(self._reaudit_lore)
         row.addWidget(reaudit_btn)
+        import_btn = QPushButton("Import CSV…")
+        import_btn.setProperty("secondary", True)
+        import_btn.setToolTip(
+            "Import a Sudowrite character CSV (Name, Role, Pronouns, Groups, "
+            "Other Names, Personality, Physical Description, Dialogue Style).")
+        import_btn.clicked.connect(self._import_lore_csv)
+        row.addWidget(import_btn)
         v.addWidget(tools)
 
         sel_row = QHBoxLayout()
@@ -334,6 +382,7 @@ class StoryBiblePanel(BasePanel):
 
         self.lore_form = LoreEntryForm()
         self.lore_form.changed.connect(lambda: setattr(self, "_dirty", True))
+        self.lore_form.typeChanged.connect(self._on_lore_type_changed)
         self.lore_form.wire_generate_menu(
             lambda w, lbl: self._wire_generate_menu(w, lbl))
         v.addWidget(self.lore_form, 2)
@@ -357,18 +406,33 @@ class StoryBiblePanel(BasePanel):
     def _build_world_tab(self):
         tab = QWidget()
         v = QVBoxLayout(tab)
+        world_tools = QHBoxLayout()
+        world_wiz = QPushButton("World wizard")
+        world_wiz.setToolTip(
+            "Interview the model to fill location, date, factions, events, and facts")
+        world_wiz.clicked.connect(self._world_wizard)
+        world_tools.addWidget(world_wiz)
+        fill_ch = QPushButton("Fill from chapters…")
+        fill_ch.setToolTip(
+            "Audit chapter text and fill definite world, bible, outline, and lore fields")
+        fill_ch.clicked.connect(self._fill_from_chapters)
+        world_tools.addWidget(fill_ch)
+        world_tools.addStretch()
+        v.addLayout(world_tools)
         form = QFormLayout()
         for key, label, multiline in _WORLD_FIELDS:
             field = QPlainTextEdit() if multiline else QLineEdit()
             if multiline:
-                field.setMaximumHeight(80)
+                field.setMinimumHeight(56)
+                field.setMaximumHeight(160)
             field.textChanged.connect(lambda _=None: setattr(self, "_dirty", True))
             self._world_widgets[key] = field
             self._wire_generate_menu(field, label)
             form.addRow(label, field)
         for key, label, multiline in _WORLD_LIST_FIELDS:
             field = QPlainTextEdit()
-            field.setMaximumHeight(72)
+            field.setMinimumHeight(56)
+            field.setMaximumHeight(140)
             field.setPlaceholderText("One item per line")
             field.textChanged.connect(lambda _=None: setattr(self, "_dirty", True))
             self._world_widgets[key] = field
@@ -376,7 +440,11 @@ class StoryBiblePanel(BasePanel):
             form.addRow(label, field)
         v.addLayout(form)
         v.addStretch()
-        self.tabs.addTab(tab, "World State")
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroll.setWidget(tab)
+        self.tabs.addTab(scroll, "World State")
 
     def _build_outline_tab(self):
         tab = QWidget()
@@ -410,7 +478,11 @@ class StoryBiblePanel(BasePanel):
         from src.plugins import is_enabled
         if hasattr(self, "portrait_btn"):
             self.portrait_btn.setVisible(is_enabled(self.app.settings, "image"))
-        QTimer.singleShot(0, self.reload)
+        QTimer.singleShot(0, self._deferred_reload)
+
+    def _deferred_reload(self):
+        pending = getattr(self, "_pending_lore_id", None)
+        self.reload(select_id=pending)
 
     def _generate_portrait(self):
         from src.plugins import is_enabled
@@ -429,14 +501,14 @@ class StoryBiblePanel(BasePanel):
         except Exception as exc:
             self.app.show_toast(str(exc), error=True)
 
-
     def on_project_change(self):
         self.reload()
 
-    def reload(self):
+    def reload(self, *, select_id: str | None = None):
         paths = self._paths()
         if not paths:
             return
+        jump = select_id or getattr(self, "_pending_lore_id", None)
         try:
             data = story_bible.read(paths["bible"])
             for key, widget in self._bible_widgets.items():
@@ -457,9 +529,14 @@ class StoryBiblePanel(BasePanel):
                     widget.setPlainText(text)
                 else:
                     widget.setText(text)
+            if jump:
+                self.tabs.setCurrentIndex(1)
+                self._show_all_lore_types()
             self._reload_lore_list()
             self._reload_outline()
             self._dirty = False
+            if jump:
+                self._focus_lore_row(jump)
             log.debug("Story Bible reloaded")
         except Exception as exc:
             log.exception("Story Bible reload failed")
@@ -499,6 +576,31 @@ class StoryBiblePanel(BasePanel):
         run_lore_audit_dialog(self, self.app)
         self.reload()
 
+    def _import_lore_csv(self):
+        paths = self._paths()
+        if not paths:
+            return
+        selected, _f = get_open_file_names(
+            self, "Import character CSV", "",
+            "CSV files (*.csv);;All files (*.*)")
+        if not selected:
+            return
+        from src import lore_import
+        added = updated = 0
+        for path in selected:
+            report = lore_import.import_character_csv(
+                paths["lore"], path, mode="upsert")
+            added += report["added"]
+            updated += report["updated"]
+        self.reload()
+        parts = []
+        if added:
+            parts.append(f"{added} added")
+        if updated:
+            parts.append(f"{updated} updated")
+        self.app.show_toast(
+            "Imported character CSV: " + (", ".join(parts) or "nothing to import") + ".")
+
     def _lore_select_all(self):
         for i in range(self.lore_list.count()):
             item = self.lore_list.item(i)
@@ -532,11 +634,12 @@ class StoryBiblePanel(BasePanel):
                     ids.append(eid)
         return ids
 
-    def _reload_lore_list(self):
+    def _reload_lore_list(self, *, persist: bool = True):
         paths = self._paths()
         if not paths:
             return
-        self._save_lore_entry()
+        if persist:
+            self._save_lore_entry()
         checked_before = set(self._checked_lore_ids())
         filt = self.lore_filter.currentData() or "all"
         self._lore_entries = lore.entries_by_type(paths["lore"], filt)
@@ -577,16 +680,47 @@ class StoryBiblePanel(BasePanel):
         base = next((e for e in getattr(self, "_lore_entries", [])
                      if e.get("id") == self._lore_loaded_id), None)
         if not base:
-            return
+            base = {"id": self._lore_loaded_id}
         entry = self.lore_form.to_entry_dict(base)
-        lore.save_entry(paths["lore"], entry)
+        saved = lore.save_entry(paths["lore"], entry)
+        updated = False
+        for i, e in enumerate(getattr(self, "_lore_entries", [])):
+            if e.get("id") == saved.get("id"):
+                self._lore_entries[i] = saved
+                updated = True
+                break
+        if not updated:
+            self._lore_entries = list(getattr(self, "_lore_entries", [])) + [saved]
+        return saved
+
+    def _on_lore_type_changed(self):
+        """Keep notes/shared fields, persist the new type, refresh the list label."""
+        saved = self._save_lore_entry()
+        if not saved:
+            return
+        et = saved.get("entryType")
+        filt = self.lore_filter.currentData() if hasattr(self, "lore_filter") else "all"
+        if filt not in (None, "all") and filt != et:
+            self._show_all_lore_types()
+            self._reload_lore_list(persist=False)
+            self._focus_lore_row(saved.get("id") or "")
+            return
+        eid = saved.get("id")
+        for i in range(self.lore_list.count()):
+            item = self.lore_list.item(i)
+            if item and item.data(Qt.ItemDataRole.UserRole) == eid:
+                item.setText(lore_types.entry_display_name(saved))
+                break
+        self._dirty = True
 
     def _load_lore_entry(self, row: int):
-        self._save_lore_entry()
         if row < 0 or row >= len(getattr(self, "_lore_entries", [])):
             return
         entry = self._lore_entries[row]
-        self._lore_loaded_id = entry.get("id")
+        new_id = entry.get("id")
+        if self._lore_loaded_id and self._lore_loaded_id != new_id:
+            self._save_lore_entry()
+        self._lore_loaded_id = new_id
         self.lore_form.load_entry(entry)
 
     def _add_lore(self):
@@ -602,6 +736,129 @@ class StoryBiblePanel(BasePanel):
         self._lore_loaded_id = created.get("id")
         self._dirty = True
         self._reload_lore_list()
+
+    def _llm_ready(self) -> bool:
+        from src.plugins import is_enabled
+        if not self._paths():
+            self.app.show_toast("Open a project first.", error=True)
+            return False
+        if not is_enabled(self.app.settings, "llm"):
+            self.app.show_toast("Enable the Local LLM pack in Add Ons.", error=True)
+            return False
+        return True
+
+    def _run_wizard(self, kind: str, existing=None, *, pick_type: bool = False,
+                    title: str = "") -> dict | None:
+        if not self._llm_ready():
+            return None
+        self.flush_if_dirty()
+        dlg = LoreWizardDialog(
+            self, self.app, kind=kind, existing=existing or {},
+            pick_type=pick_type, title=title)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return {
+            "kind": dlg.selected_kind(),
+            "fields": dlg.result_fields(),
+            "replace": dlg.replace_mode(),
+        }
+
+    def _lore_wizard_new(self):
+        filt = self.lore_filter.currentData() or "all"
+        kind = filt if filt != "all" else "character"
+        result = self._run_wizard(kind, pick_type=True, title="Lore wizard")
+        if not result:
+            return
+        fields = dict(result["fields"])
+        fields["entryType"] = result["kind"]
+        if not lore_wizard.fill_has_content(fields):
+            self.app.show_toast("Wizard produced an empty card. Try again.", error=True)
+            return
+        if not (fields.get("name") or "").strip():
+            fields["name"] = "New entry"
+        created = lore.add(self._paths()["lore"], fields)
+        eid = created.get("id") or ""
+        self._lore_loaded_id = eid
+        self._dirty = True
+        self.tabs.setCurrentIndex(1)
+        self._show_all_lore_types()
+        self._reload_lore_list(persist=False)
+        self._focus_lore_row(eid)
+        self.app.show_toast(f"Created {created.get('name') or 'entry'} from wizard.")
+
+    def _lore_wizard_fill(self):
+        if not self._lore_loaded_id:
+            self.app.show_toast("Select a lore entry first.", error=True)
+            return
+        self._save_lore_entry()
+        base = next((e for e in getattr(self, "_lore_entries", [])
+                     if e.get("id") == self._lore_loaded_id), {})
+        kind = base.get("entryType") or "character"
+        result = self._run_wizard(kind, existing=base, title="Fill lore entry")
+        if not result or not lore_wizard.fill_has_content(result.get("fields")):
+            if result:
+                self.app.show_toast("Wizard produced no new fields.", error=True)
+            return
+        merged = {**base, **result["fields"], "id": self._lore_loaded_id,
+                  "entryType": kind}
+        saved = lore.save_entry(self._paths()["lore"], merged)
+        self._lore_loaded_id = saved.get("id")
+        self._dirty = True
+        self._reload_lore_list(persist=False)
+        self._focus_lore_row(saved.get("id") or "")
+        self.app.show_toast("Lore entry filled from wizard.")
+
+    def _apply_widget_fields(self, widgets: dict, fields: dict, list_keys=()):
+        for key, value in fields.items():
+            widget = widgets.get(key)
+            if widget is None:
+                continue
+            if key in list_keys:
+                if isinstance(value, list):
+                    text = "\n".join(str(v).strip() for v in value if str(v).strip())
+                else:
+                    text = str(value or "")
+            elif isinstance(value, list):
+                text = ", ".join(str(v) for v in value if v)
+            else:
+                text = str(value or "")
+            self._set_field_text(widget, text, append=False)
+
+    def _fill_from_chapters(self):
+        run_manuscript_fill(self, self.app)
+
+    def _canon_wizard(self):
+        existing = {}
+        for key in ("premise", "genreTone", "worldRules", "styleNotes", "synopsis"):
+            widget = self._bible_widgets.get(key)
+            if widget is not None:
+                existing[key] = self._field_text(widget)
+        result = self._run_wizard("canon", existing=existing, title="Canon wizard")
+        if not result:
+            return
+        self._apply_widget_fields(self._bible_widgets, result["fields"])
+        self.save_all()
+        self.app.show_toast("Story Bible filled from wizard.")
+
+    def _world_wizard(self):
+        existing = {}
+        list_keys = ("factions", "ongoingEvents", "facts")
+        for key in ("currentLocation", "currentDate") + list_keys:
+            widget = self._world_widgets.get(key)
+            if widget is None:
+                continue
+            text = self._field_text(widget)
+            if key in list_keys:
+                existing[key] = [ln.strip() for ln in text.splitlines() if ln.strip()]
+            else:
+                existing[key] = text
+        result = self._run_wizard("world", existing=existing, title="World wizard")
+        if not result:
+            return
+        self._apply_widget_fields(
+            self._world_widgets, result["fields"], list_keys=list_keys)
+        self.save_all()
+        self.app.show_toast("World State filled from wizard.")
 
     def _delete_lore(self):
         paths = self._paths()
@@ -703,23 +960,84 @@ class StoryBiblePanel(BasePanel):
     def show_world_state_tab(self):
         self.tabs.setCurrentIndex(2)
 
-    def select_lore_entry(self, entry_id: str):
-        """Snap Lorebook list + form to this entry (Focus / continuity jump)."""
-        self.tabs.setCurrentIndex(1)
-        self._lore_loaded_id = entry_id
-        # Ensure the entry is visible regardless of type filter.
-        if hasattr(self, "lore_filter") and self.lore_filter.currentData() not in (None, "all"):
-            idx = self.lore_filter.findData("all")
-            if idx >= 0:
-                self.lore_filter.blockSignals(True)
-                self.lore_filter.setCurrentIndex(idx)
-                self.lore_filter.blockSignals(False)
-        self._reload_lore_list()
+    def _show_all_lore_types(self):
+        if not hasattr(self, "lore_filter"):
+            return
+        if self.lore_filter.currentData() in (None, "all"):
+            return
+        idx = self.lore_filter.findData("all")
+        if idx >= 0:
+            self.lore_filter.blockSignals(True)
+            self.lore_filter.setCurrentIndex(idx)
+            self.lore_filter.blockSignals(False)
+
+    def _focus_lore_row(self, entry_id: str) -> bool:
+        if not entry_id:
+            return False
         for i in range(self.lore_list.count()):
             item = self.lore_list.item(i)
             if item and item.data(Qt.ItemDataRole.UserRole) == entry_id:
+                if self.lore_list.currentRow() != i:
+                    self.lore_list.setCurrentRow(i)
+                else:
+                    self._load_lore_entry(i)
                 self.lore_list.scrollToItem(item)
-                break
+                self._pending_lore_id = None
+                return True
+        return False
+
+    def select_lore_entry(self, entry_id: str) -> bool:
+        """Snap Lorebook list + form to this entry (Focus / continuity jump)."""
+        if not entry_id:
+            return False
+        self._pending_lore_id = entry_id
+        self.tabs.setCurrentIndex(1)
+        self._show_all_lore_types()
+        self._reload_lore_list(persist=True)
+        if self._focus_lore_row(entry_id):
+            return True
+        self._pending_lore_id = None
+        return False
+
+    def select_lore_entry_by_name(self, name: str) -> bool:
+        paths = self._paths()
+        if not paths or not name:
+            return False
+        needle = lore._norm_name(name)
+        for entry in lore.all_entries(paths["lore"]):
+            if lore._norm_name(entry.get("name")) == needle:
+                return self.select_lore_entry(entry.get("id") or "")
+            for alias in entry.get("aliases") or []:
+                if lore._norm_name(alias) == needle:
+                    return self.select_lore_entry(entry.get("id") or "")
+        return False
+
+    def add_lore_from_audit(self, name: str, *, issue=None) -> bool:
+        """Create a Lorebook card prefilled from an unmapped-name audit hit."""
+        paths = self._paths()
+        name = (name or "").strip()
+        if not paths or not name:
+            return False
+        if self.select_lore_entry_by_name(name):
+            return True
+        from src import lore_audit
+        self._save_lore_entry()
+        draft = lore_audit.draft_unmapped_entry(paths, name, issue=issue)
+        created = lore.add(paths["lore"], draft)
+        eid = created.get("id") or ""
+        self._pending_lore_id = eid
+        self._lore_loaded_id = eid
+        self.tabs.setCurrentIndex(1)
+        self._show_all_lore_types()
+        self._reload_lore_list(persist=False)
+        if not self._focus_lore_row(eid):
+            return False
+        self._dirty = True
+        editor = getattr(self.app, "editor", None)
+        if editor is not None and hasattr(editor, "_refresh_continuity"):
+            editor._refresh_continuity()
+        self.app.show_toast(f"Started lore for {name}. Review the notes and save.")
+        return True
 
     def _upgrade_legacy_lore(self):
         paths = self._paths()

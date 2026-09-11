@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -18,9 +17,10 @@ from PySide6.QtWidgets import (
 
 from src.capture_queue import CaptureQueue, describe_item, item_preview
 from ui_qt.widgets.flow_layout import FlowLayout
+from ui_qt.widgets.themed_dialog import ThemedDialog
 
 
-class CaptureReviewDialog(QDialog):
+class CaptureReviewDialog(ThemedDialog):
     """Lists pending capture items; approve writes canon, discard drops."""
 
     def __init__(self, parent, app):

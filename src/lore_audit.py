@@ -19,6 +19,7 @@ class AuditIssue:
     fix_hint: str = ""
     fix_action: str | None = None  # auto-fix key when fixable
     fix_detail: str = ""
+    target_name: str = ""
 
 
 @dataclass
@@ -58,6 +59,108 @@ def _manuscript_text(paths) -> str:
         data = chapters.read(paths["chapters"], ch["id"])
         chunks.append(data.get("content") or "")
     return "\n".join(chunks)
+
+
+_NAME_AS_PERSON = re.compile(
+    r"\b(?:said|asked|whispered|told|replied|shouted|muttered|nodded|"
+    r"smiled|laughed|walked|looked|watched|turned|grabbed|reached)\b",
+    re.I,
+)
+_NAME_AS_PLACE = re.compile(
+    r"\b(?:district|street|avenue|river|station|harbor|harbour|city|"
+    r"quarter|keep|tower|bridge|plaza|market|port|road|lane|alley)\b",
+    re.I,
+)
+_HE_PRONOUNS = re.compile(r"\b(?:he|him|his)\b", re.I)
+_SHE_PRONOUNS = re.compile(r"\b(?:she|her|hers)\b", re.I)
+_THEY_PRONOUNS = re.compile(r"\b(?:they|them|their)\b", re.I)
+
+
+def _name_boundary_re(name: str) -> re.Pattern:
+    return re.compile(r"\b" + re.escape(name) + r"(?:'s)?\b", re.I)
+
+
+def mention_snippets(manuscript: str, name: str, *, limit: int = 5) -> list[str]:
+    """Sentences from the manuscript that mention `name` (word boundary)."""
+    name = (name or "").strip()
+    if not manuscript or not name:
+        return []
+    rx = _name_boundary_re(name)
+    parts = re.split(r"(?<=[.!?])\s+", manuscript)
+    out: list[str] = []
+    seen: set[str] = set()
+    for sent in parts:
+        if not rx.search(sent):
+            continue
+        cleaned = " ".join(sent.split()).strip()
+        key = cleaned.lower()
+        if not cleaned or key in seen:
+            continue
+        seen.add(key)
+        out.append(cleaned)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _guess_entry_type(snippets: list[str], name: str) -> str:
+    person = 0
+    place = 0
+    locative = re.compile(
+        r"\b(?:in|at|from|toward|through|into)\s+(?:the\s+)?"
+        + re.escape(name) + r"\b",
+        re.I,
+    )
+    for sent in snippets:
+        if _NAME_AS_PERSON.search(sent):
+            person += 1
+        if _NAME_AS_PLACE.search(sent) and locative.search(sent):
+            place += 1
+    if place and not person:
+        return "place"
+    return "character"
+
+
+def _guess_pronouns(snippets: list[str]) -> str:
+    """Return he/him, she/her, or they/them only when one family dominates."""
+    he = she = they = 0
+    for sent in snippets:
+        he += len(_HE_PRONOUNS.findall(sent))
+        she += len(_SHE_PRONOUNS.findall(sent))
+        they += len(_THEY_PRONOUNS.findall(sent))
+    scores = [("he/him", he), ("she/her", she), ("they/them", they)]
+    scores.sort(key=lambda x: -x[1])
+    winner, n = scores[0]
+    second = scores[1][1]
+    if n >= 2 and n >= second * 2:
+        return winner
+    return ""
+
+
+def draft_unmapped_entry(paths, name: str, *, issue: AuditIssue | None = None) -> dict:
+    """Prefill a lore dict from audit + manuscript. Only definite fields."""
+    name = (name or "").strip()
+    manuscript = _manuscript_text(paths) if paths else ""
+    snippets = mention_snippets(manuscript, name)
+    entry_type = _guess_entry_type(snippets, name)
+    notes_parts: list[str] = []
+    if issue and (issue.message or "").strip():
+        notes_parts.append(issue.message.strip())
+    if snippets:
+        if notes_parts:
+            notes_parts.append("")
+        notes_parts.append("From the manuscript:")
+        notes_parts.extend(f"• {s}" for s in snippets)
+    entry: dict = {
+        "name": name or "New entry",
+        "entryType": entry_type,
+        "keywords": [name] if name else [],
+        "notes": "\n".join(notes_parts),
+    }
+    pronouns = _guess_pronouns(snippets)
+    if pronouns and entry_type == "character":
+        entry["pronouns"] = pronouns
+    return entry
 
 
 def audit_lore(paths, *, orphan_scan: bool = True) -> list[AuditIssue]:
@@ -192,11 +295,12 @@ def audit_lore(paths, *, orphan_scan: bool = True) -> list[AuditIssue]:
             ))
 
     if orphan_scan and manuscript_orig:
-        for suggestion in _unmapped_proper_nouns(manuscript_orig, entries):
+        for suggestion, name in _unmapped_proper_nouns(manuscript_orig, entries):
             issues.append(AuditIssue(
                 "info", "unmapped_proper_noun", None,
                 suggestion,
-                "Consider adding a lore entry via Quick Add.",
+                "Click to add a Lorebook entry from this mention.",
+                target_name=name,
             ))
 
     severity_order = {"error": 0, "warning": 1, "info": 2}
@@ -340,8 +444,55 @@ def _attach_duplicate_fixes(issues: list[AuditIssue], entries: list[dict]):
             ))
 
 
-def _unmapped_proper_nouns(manuscript_lower: str, entries: list, limit: int = 8) -> list[str]:
-    """Suggest capitalized tokens frequent in manuscript but absent from lore."""
+def _is_sentence_start(text: str, index: int) -> bool:
+    """True if `index` sits at the start of a sentence (or the whole text)."""
+    before = text[:index].rstrip()
+    if not before:
+        return True
+    return bool(re.search(r"[.!?…][\"'”’)\]»]*$", before))
+
+
+_ENCHANT_DICT = None
+_ENCHANT_TRIED = False
+
+
+def _enchant_dict():
+    global _ENCHANT_DICT, _ENCHANT_TRIED
+    if _ENCHANT_TRIED:
+        return _ENCHANT_DICT
+    _ENCHANT_TRIED = True
+    try:
+        import enchant
+        _ENCHANT_DICT = enchant.Dict("en_US")
+    except Exception:
+        _ENCHANT_DICT = None
+    return _ENCHANT_DICT
+
+
+def _english_common_word(word: str) -> bool:
+    """True if lowercase `word` is a normal English dictionary word."""
+    d = _enchant_dict()
+    if d is None:
+        return False
+    try:
+        return d.check(word.lower())
+    except Exception:
+        return False
+
+
+def _enchant_available() -> bool:
+    return _enchant_dict() is not None
+
+
+def _unmapped_proper_nouns(manuscript: str, entries: list, limit: int = 8) -> list[tuple[str, str]]:
+    """Suggest CapWords frequent in manuscript but absent from lore.
+
+    Uses original casing (never .title() the whole manuscript — that turns every
+    English word into a false proper noun). Dictionary-common English is skipped;
+    invented names may appear at sentence start and still count.
+
+    Returns (message, display_name) pairs so the UI can jump or prompt Quick Add.
+    """
     known = set()
     for e in entries:
         for token in (e.get("name") or "").split():
@@ -350,28 +501,68 @@ def _unmapped_proper_nouns(manuscript_lower: str, entries: list, limit: int = 8)
             known.add(str(kw).lower())
 
     counts: dict[str, int] = {}
-    for match in re.finditer(r"\b([A-Z][a-z]{2,})\b", manuscript_lower.title()):
+    for match in re.finditer(r"\b([A-Z][a-zA-Z]{2,})\b", manuscript or ""):
         word = match.group(1)
+        if word.isupper():
+            continue
         wl = word.lower()
-        if wl in known or wl in _STOP_WORDS:
+        if wl in known or wl in _STOP_WORDS or len(wl) < 4:
+            continue
+        if _english_common_word(wl):
+            continue
+        # Without a dictionary, ignore sentence starters so "The"/"Against" drop out.
+        if not _enchant_available() and _is_sentence_start(manuscript, match.start()):
             continue
         counts[wl] = counts.get(wl, 0) + 1
 
     ranked = sorted(counts.items(), key=lambda x: -x[1])
-    out = []
+    out: list[tuple[str, str]] = []
     for word, count in ranked[:limit]:
         if count >= 3:
-            out.append(
-                f"Manuscript mentions '{word.title()}' {count}× with no lore entry.")
+            label = word[:1].upper() + word[1:]
+            out.append((
+                f"Manuscript mentions '{label}' {count}× with no lore entry.",
+                label,
+            ))
     return out
 
 
+# Common English + dialogue glue — never suggest as missing lore.
 _STOP_WORDS = frozenset({
     "the", "and", "but", "for", "with", "from", "that", "this", "they",
-    "she", "her", "his", "him", "was", "were", "had", "have", "not",
+    "she", "her", "his", "him", "was", "were", "had", "have", "has", "not",
     "you", "your", "what", "when", "where", "who", "how", "all", "one",
-    "said", "then", "there", "their", "would", "could", "should", "into",
-    "chapter", "however", "though", "after", "before", "about", "just",
+    "said", "then", "there", "their", "them", "would", "could", "should",
+    "into", "chapter", "however", "though", "after", "before", "about",
+    "just", "against", "way", "something", "anything", "everything",
+    "nothing", "someone", "anyone", "everyone", "can", "through", "same",
+    "than", "then", "been", "being", "over", "under", "again", "once",
+    "here", "only", "also", "back", "even", "still", "while", "which",
+    "whom", "whose", "into", "onto", "upon", "across", "around", "among",
+    "between", "without", "within", "toward", "towards", "because",
+    "although", "unless", "until", "since", "during", "another", "other",
+    "each", "every", "both", "few", "more", "most", "some", "such", "own",
+    "same", "than", "too", "very", "just", "like", "know", "think", "want",
+    "need", "look", "come", "came", "went", "go", "going", "got", "get",
+    "make", "made", "take", "took", "give", "gave", "tell", "told", "ask",
+    "asked", "let", "put", "set", "keep", "kept", "seem", "seemed", "felt",
+    "feel", "leave", "left", "call", "called", "try", "tried", "use",
+    "used", "work", "worked", "start", "started", "show", "showed", "hear",
+    "heard", "play", "played", "run", "ran", "move", "moved", "live",
+    "lived", "believe", "hold", "held", "bring", "brought", "happen",
+    "happened", "write", "wrote", "provide", "sit", "sat", "stand", "stood",
+    "lose", "lost", "pay", "paid", "meet", "met", "include", "continue",
+    "set", "learn", "change", "lead", "led", "understand", "watch",
+    "follow", "stop", "create", "speak", "spoke", "read", "allow", "add",
+    "spend", "spent", "grow", "grew", "open", "opened", "walk", "walked",
+    "win", "won", "offer", "remember", "love", "consider", "appear",
+    "appear", "buy", "bought", "wait", "serve", "die", "died", "send",
+    "sent", "expect", "build", "built", "stay", "fell", "fall", "cut",
+    "reach", "kill", "remain", "suggest", "raise", "pass", "sell", "sold",
+    "require", "report", "decide", "pull", "return", "explain", "hope",
+    "develop", "carry", "break", "broke", "receive", "agree", "support",
+    "hit", "produce", "eat", "ate", "cover", "catch", "drew", "draw",
+    "choose", "chose", "chapter", "scene", "part", "page",
 })
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import config
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import (
@@ -33,12 +34,15 @@ from src import chapters, export as export_mod, story_context
 from src.plugins import is_enabled
 from ui_qt.ambiguity_gate import run_ambiguity_gate
 from ui_qt.stream_throttle import StreamThrottler
-from ui_qt.theme import get_open_file_name, get_save_file_name
+from ui_qt.theme import get_open_file_names, get_save_file_name
 from ui_qt.widgets.flow_layout import FlowLayout
 from ui_qt.widgets.spellcheck import SpellCheckService, SpellReplaceBar, skip_spellcheck
 from ui_qt.widgets.binder import BinderWidget
 from ui_qt.widgets.activity_indicator import ActivityStatus
-from ui_qt.widgets.auto_scroll import make_auto_scroll_checkbox, scroll_to_end
+from ui_qt.widgets.auto_scroll import (
+    append_without_forced_scroll, is_auto_scroll, make_auto_scroll_checkbox,
+    scroll_to_end,
+)
 from ui_qt.ai_workflow import EDITOR_AI_SUBTITLE, EDITOR_MODE_TIPS
 from ui_qt.workers import EditorAiWorker, EditorPipelineWorker
 
@@ -189,18 +193,21 @@ class EditorWidget(QWidget):
             "Store a compact recap of this chapter for PREVIOUSLY (needs Local LLM pack)")
 
         self.editor = QPlainTextEdit()
-        font = QFont(
-            _resolve_editor_font_family(self.app.settings),
-            _resolve_editor_font_size(self.app.settings),
-        )
-        self.editor.setFont(font)
+        self.editor.setObjectName("ManuscriptEditor")
         self.editor.setLineWrapMode(QPlainTextEdit.WidgetWidth)
+        self._apply_editor_font()
         self.editor.textChanged.connect(self._on_text_changed)
         self.editor.cursorPositionChanged.connect(self._on_cursor)
 
         self.lore_footer = QLabel("")
         self.lore_footer.setProperty("muted", True)
         self.lore_footer.setWordWrap(True)
+        self.lore_footer.setTextFormat(Qt.TextFormat.RichText)
+        self.lore_footer.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction)
+        self.lore_footer.setOpenExternalLinks(False)
+        self.lore_footer.setToolTip("Click a name to open that lore entry.")
+        self.lore_footer.linkActivated.connect(self._jump_lore_chip)
 
         self._build_ai_dock()
         self.editor.installEventFilter(self)
@@ -302,7 +309,9 @@ class EditorWidget(QWidget):
 
         self.continuity_list = QListWidget()
         self.continuity_list.setMaximumHeight(72)
-        self.continuity_list.setToolTip("Live continuity (lore audit). Click to jump to the entry.")
+        self.continuity_list.setToolTip(
+            "Live continuity (lore audit). Click an entry to open it, or a "
+            "missing name to start a new Lorebook card.")
         self.continuity_list.itemClicked.connect(self._jump_continuity)
         self.continuity_list.hide()
 
@@ -443,15 +452,45 @@ class EditorWidget(QWidget):
         self._ghost_start_cur = start
         self._ghost_end_cur = end
         self._ghost_active = True
+        self._ghost_hold = ""
+        self._ghost_released = False
         text_before = self.editor.toPlainText()[:cursor.position()]
         if text_before.strip() and not text_before.endswith("\n\n"):
-            self._ghost_append("\n\n")
+            self._ghost_insert("\n\n")
+
+    def _ghost_insert(self, text: str):
+        if not self._ghost_active or not text:
+            return
+        follow = is_auto_scroll(self.app)
+        sb = self.editor.verticalScrollBar()
+        saved = sb.value()
+        self._ghost_end_cur.insertText(text, self._ghost_format())
+        if follow:
+            self.editor.ensureCursorVisible()
+        else:
+            sb.setValue(saved)
 
     def _ghost_append(self, text: str):
         if not self._ghost_active or not text:
             return
-        self._ghost_end_cur.insertText(text, self._ghost_format())
-        self.editor.ensureCursorVisible()
+        if not getattr(self, "_ghost_released", True):
+            self._ghost_hold = getattr(self, "_ghost_hold", "") + text
+            cleaned = story_context.strip_write_preamble(self._ghost_hold)
+            if not cleaned:
+                if len(self._ghost_hold) > 500:
+                    self._ghost_released = True
+                    self._ghost_insert(self._ghost_hold)
+                    self._ghost_hold = ""
+                return
+            stripped = cleaned != self._ghost_hold.strip()
+            ready = stripped or not story_context.looks_like_write_preamble_start(
+                self._ghost_hold)
+            if ready or len(self._ghost_hold) > 500:
+                self._ghost_released = True
+                self._ghost_hold = ""
+                self._ghost_insert(cleaned)
+            return
+        self._ghost_insert(text)
 
     def _ghost_selection(self) -> QTextCursor | None:
         if not self._ghost_active:
@@ -484,6 +523,8 @@ class EditorWidget(QWidget):
     def _ghost_reject(self):
         cur = self._ghost_selection()
         self._ghost_active = False
+        self._ghost_hold = ""
+        self._ghost_released = False
         if cur is not None and cur.hasSelection():
             cur.removeSelectedText()
         self._ghost_start_cur = self._ghost_end_cur = None
@@ -526,7 +567,28 @@ class EditorWidget(QWidget):
         self.ghost_cb.toggled.connect(
             lambda on: self.app.settings.set("editor.ghost_text", bool(on)))
         v.addWidget(self.ghost_cb)
+        write_from_row = QHBoxLayout()
+        self.write_from_lbl = QLabel("Continue from:")
+        write_from_row.addWidget(self.write_from_lbl)
+        self.write_from = QComboBox()
+        self.write_from.addItem("Cursor", "cursor")
+        self.write_from.addItem("End of chapter", "end")
+        wf = self.app.settings.get("editor.write_from", "cursor")
+        idx = self.write_from.findData(wf if wf in ("cursor", "end") else "cursor")
+        self.write_from.setCurrentIndex(max(0, idx))
+        self.write_from.setToolTip(
+            "Cursor: STORY SO FAR is text before the caret; draft inserts there.\n"
+            "End of chapter: uses the full page and inserts at the end.\n"
+            "A text selection always overrides this.")
+        self.write_from.currentIndexChanged.connect(self._on_write_from_changed)
+        write_from_row.addWidget(self.write_from, 1)
+        v.addLayout(write_from_row)
+        self.write_from_hint = QLabel("")
+        self.write_from_hint.setWordWrap(True)
+        self.write_from_hint.setProperty("muted", True)
+        v.addWidget(self.write_from_hint)
         self._on_ai_mode_changed(self.ai_mode.currentText())
+        self._refresh_write_from_hint()
         v.addWidget(QLabel("Author's note (persistent guidance)"))
         self.author_note = QPlainTextEdit()
         self.author_note.setPlaceholderText("Tone, POV, things the AI should always respect...")
@@ -570,13 +632,80 @@ class EditorWidget(QWidget):
 
     def _on_ai_mode_changed(self, mode: str):
         self.ai_mode.setToolTip(EDITOR_MODE_TIPS.get(mode, ""))
-        self.style_preset.setVisible(mode == "Write")
+        is_write = mode == "Write"
+        self.style_preset.setVisible(is_write)
         if hasattr(self, "ghost_cb"):
-            self.ghost_cb.setVisible(mode == "Write")
+            self.ghost_cb.setVisible(is_write)
+        if hasattr(self, "write_from"):
+            self.write_from_lbl.setVisible(is_write)
+            self.write_from.setVisible(is_write)
+            self.write_from_hint.setVisible(is_write)
+            if is_write:
+                self._refresh_write_from_hint()
+
+    def _on_write_from_changed(self, *_args):
+        if not hasattr(self, "write_from"):
+            return
+        key = self.write_from.currentData() or "cursor"
+        self.app.settings.set("editor.write_from", key)
+        self._refresh_write_from_hint()
+
+    def _write_from_key(self) -> str:
+        if hasattr(self, "write_from"):
+            key = self.write_from.currentData()
+            if key in ("cursor", "end"):
+                return key
+        key = self.app.settings.get("editor.write_from", "cursor")
+        return key if key in ("cursor", "end") else "cursor"
+
+    def _write_context_prefix(
+            self, text: str, selection: str) -> tuple[str, str]:
+        """Return (story_so_far_prefix, insert_mode).
+
+        insert_mode: selection | cursor | end
+        Selection always wins over the Continue-from combo.
+        """
+        if selection:
+            idx = text.find(selection)
+            if idx >= 0:
+                return text[:idx + len(selection)], "selection"
+            # Fallback: use caret when find fails (e.g. soft newlines).
+        if self._write_from_key() == "end":
+            return text, "end"
+        pos = self.editor.textCursor().position()
+        pos = max(0, min(pos, len(text)))
+        return text[:pos], "cursor"
+
+    def _refresh_write_from_hint(self):
+        if not hasattr(self, "write_from_hint"):
+            return
+        text = self.editor.toPlainText() if hasattr(self, "editor") else ""
+        selection = self._selected_text() if hasattr(self, "editor") else ""
+        before, mode = self._write_context_prefix(text, selection)
+        if mode == "selection":
+            tip = "Continues after selection"
+        elif mode == "end":
+            tip = "Continues at end of chapter"
+        else:
+            tip = f"Continues at cursor ({len(before):,} chars before)"
+        self.write_from_hint.setText(tip)
+        if hasattr(self, "ai_run"):
+            self.ai_run.setToolTip(tip + " — Ctrl+Enter to run.")
 
     def refresh_chapters(self):
         paths = self.app.engine.paths
         if not paths:
+            self._chapter_id = None
+            self.chapter_combo.blockSignals(True)
+            self.chapter_combo.clear()
+            self.chapter_combo.blockSignals(False)
+            self.editor.blockSignals(True)
+            self.editor.setPlainText("")
+            self.editor.blockSignals(False)
+            self.binder.reload([], None)
+            self.lore_footer.setText("")
+            self.continuity_list.clear()
+            self.continuity_list.hide()
             return
         current = self._chapter_id
         self.chapter_combo.blockSignals(True)
@@ -702,11 +831,34 @@ class EditorWidget(QWidget):
         self._chapter_id = None
         self.refresh_chapters()
 
-    def _on_font_size(self, size: int):
-        font = self.editor.font()
-        font.setPointSize(size)
+    def _apply_editor_font(self, size: int | None = None, family: str | None = None):
+        """Apply manuscript font so it wins over app QSS (* { font-size: 13px })."""
+        if size is None:
+            size = _resolve_editor_font_size(self.app.settings)
+        else:
+            size = max(8, min(int(size), 72))
+        if family is None:
+            family = _resolve_editor_font_family(self.app.settings)
+        else:
+            family = str(family or config.EDITOR_FONT_FAMILY)
+        font = QFont(family, size)
         self.editor.setFont(font)
+        self.editor.document().setDefaultFont(font)
+        # Widget-local QSS overrides the global * { font-size: 13px } rule.
+        safe = family.replace("\\", "\\\\").replace('"', '\\"')
+        self.editor.setStyleSheet(
+            f'QPlainTextEdit#ManuscriptEditor {{ '
+            f'font-family: "{safe}"; font-size: {size}pt; }}'
+        )
+        if hasattr(self, "font_size_spin"):
+            self.font_size_spin.blockSignals(True)
+            self.font_size_spin.setValue(size)
+            self.font_size_spin.blockSignals(False)
+
+    def _on_font_size(self, size: int):
+        size = max(8, min(int(size), 72))
         self.app.settings.set("editor.font_size", size)
+        self._apply_editor_font(size=size)
 
     def _on_text_changed(self):
         self._dirty = True
@@ -782,6 +934,19 @@ class EditorWidget(QWidget):
             self.lore_footer.setText("")
         self.include_notes_cb.setChecked(
             bool(self.app.settings.get("editor.include_notes_in_ai", False)))
+        if hasattr(self, "ghost_cb"):
+            self.ghost_cb.blockSignals(True)
+            self.ghost_cb.setChecked(
+                bool(self.app.settings.get("editor.ghost_text", False)))
+            self.ghost_cb.blockSignals(False)
+        if hasattr(self, "write_from"):
+            wf = self.app.settings.get("editor.write_from", "cursor")
+            idx = self.write_from.findData(wf if wf in ("cursor", "end") else "cursor")
+            self.write_from.blockSignals(True)
+            self.write_from.setCurrentIndex(max(0, idx))
+            self.write_from.blockSignals(False)
+            self._refresh_write_from_hint()
+        self._apply_editor_font()
         self.apply_qol()
         self.apply_plugin_chrome()
 
@@ -921,8 +1086,12 @@ class EditorWidget(QWidget):
                 match_mode=self.app.settings.get("editor.lore_match_mode", "substring"),
             )
             if ranked:
-                chips = ", ".join(e.get("name", "?") for e in ranked[:5])
-                self.lore_footer.setText(f"Active lore: {chips}")
+                chips = []
+                for e in ranked[:5]:
+                    eid = e.get("id") or ""
+                    nm = html.escape(e.get("name") or "?", quote=True)
+                    chips.append(f'<a href="{eid}">{nm}</a>')
+                self.lore_footer.setText("Active lore: " + ", ".join(chips))
             else:
                 self.lore_footer.setText("")
         except Exception:
@@ -1002,11 +1171,20 @@ class EditorWidget(QWidget):
 
         if mode == "write":
             self._pipeline_step = 0
-            before = text
-            if selection:
-                idx = text.find(selection)
-                if idx >= 0:
-                    before = text[:idx + len(selection)]
+            before, insert_mode = self._write_context_prefix(text, selection)
+            if insert_mode == "selection":
+                self.ai_status.set_status("Write… after selection", active=True)
+            elif insert_mode == "end":
+                self.ai_status.set_status("Write… from end of chapter", active=True)
+            else:
+                self.ai_status.set_status(
+                    f"Write… from cursor ({len(before):,} chars)", active=True)
+            if insert_mode == "end":
+                # Keep insert point in sync with STORY SO FAR (chapter end).
+                cur = self.editor.textCursor()
+                cur.clearSelection()
+                cur.movePosition(QTextCursor.MoveOperation.End)
+                self.editor.setTextCursor(cur)
             if self._ghost_active:
                 self._ghost_reject()
             if self.ghost_cb.isChecked():
@@ -1189,10 +1367,57 @@ class EditorWidget(QWidget):
         if body:
             self._insert_text(body)
 
+    def plan_draft(self, beats, extra: str = "", pov: str = "", tense: str = "",
+                   perspective: str = "", parking: str = ""):
+        """Write one passage covering Draft scenes into the draft bar / ghost."""
+        if not is_enabled(self.app.settings, "llm"):
+            self.app.show_toast("Enable the Local LLM pack in Add Ons.", error=True)
+            return
+        if self._ai_worker and self._ai_worker.isRunning():
+            self.app.show_toast("AI is busy — try again after the current run.", error=True)
+            return
+        lines = [str(b).strip() for b in (beats or []) if str(b).strip()]
+        if not lines:
+            self.app.show_toast("Add or generate scenes first.", error=True)
+            return
+        self._ensure_ai_surface()
+        self.app.engine.clear_cancel()
+        self.ai_output.clear()
+        self._ai_buffer = ""
+        self._stage_drafts = []
+        self._ai_throttle.flush_now()
+        self._lore_timer.stop()
+        self.ai_run.setEnabled(False)
+        self.ai_stop.setEnabled(True)
+        self._pipeline_step = 0
+        text = self.editor.toPlainText()
+        if text.strip():
+            cur = self.editor.textCursor()
+            cur.clearSelection()
+            cur.movePosition(QTextCursor.MoveOperation.End)
+            self.editor.setTextCursor(cur)
+        before = self.editor.toPlainText()
+        cid = self._chapter_id or ""
+        self.ai_status.set_status("Plan Draft… from end of chapter", active=True)
+        if self._ghost_active:
+            self._ghost_reject()
+        if self.ghost_cb.isChecked():
+            self._ghost_begin()
+
+        def pipeline_fn():
+            yield from self.app.writing.editor_plan_draft(
+                before, cid, lines, extra=extra, pov=pov, tense=tense,
+                perspective=perspective, parking=parking, show_think=False)
+
+        self._ai_worker = EditorPipelineWorker(self.app.engine, pipeline_fn)
+        self._ai_worker.event.connect(
+            self._on_pipeline_event, Qt.ConnectionType.QueuedConnection)
+        self._ai_worker.finished_ok.connect(
+            self._on_ai_done, Qt.ConnectionType.QueuedConnection)
+        self._ai_worker.start()
+
     def _append_ai_chunk(self, text: str):
-        self.ai_output.moveCursor(QTextCursor.End)
-        self.ai_output.insertPlainText(text)
-        scroll_to_end(self.ai_output, self.app)
+        append_without_forced_scroll(self.ai_output, text, self.app)
 
     def _stop_ai(self):
         self.app.engine.request_cancel()
@@ -1410,6 +1635,8 @@ class EditorWidget(QWidget):
         self.spell_bar.refresh(self.app.settings)
         if self.app.settings.get("editor.typewriter", False):
             self.editor.centerCursor()
+        if getattr(self, "ai_mode", None) and self.ai_mode.currentText() == "Write":
+            self._refresh_write_from_hint()
 
     def _maybe_autocorrect(self):
         if not self.app.settings.get("editor.autocorrect", False):
@@ -1438,7 +1665,10 @@ class EditorWidget(QWidget):
         self.btn_summarize.setVisible(True)
         self.ai_dock.setVisible(llm and not s.get("editor.focus_mode", False))
         self.team_btn.setVisible(llm)
-        self.continuity_list.setVisible(llm)
+        if not llm:
+            self.continuity_list.hide()
+        else:
+            self._refresh_continuity()
         lay = self.toolbar.layout()
         if lay is not None:
             lay.invalidate()
@@ -1451,6 +1681,8 @@ class EditorWidget(QWidget):
             return
         paths = self.app.engine.paths
         if not paths:
+            self.continuity_list.clear()
+            self.continuity_list.hide()
             return
         from src import lore_audit
         from PySide6.QtWidgets import QListWidgetItem
@@ -1458,17 +1690,28 @@ class EditorWidget(QWidget):
         self.continuity_list.clear()
         for issue in issues:
             item = QListWidgetItem(f"[{issue.severity}] {issue.message}")
-            item.setData(256, issue)
+            item.setData(Qt.ItemDataRole.UserRole, issue)
+            tip = issue.fix_hint or "Click to open or add the lore entry."
+            item.setToolTip(tip)
             self.continuity_list.addItem(item)
         self.continuity_list.setVisible(bool(issues))
 
-    def _jump_continuity(self, item):
-        issue = item.data(256)
-        entry_id = getattr(issue, "entry_id", None)
-        if not entry_id:
-            entry_id = getattr(issue, "id", None)
+    def _jump_lore_chip(self, entry_id: str):
         if entry_id:
             self.app.open_lore_entry(str(entry_id))
+
+    def _jump_continuity(self, item):
+        issue = item.data(Qt.ItemDataRole.UserRole)
+        if issue is None:
+            return
+        entry_id = getattr(issue, "entry_id", None)
+        name = getattr(issue, "target_name", None)
+        if entry_id:
+            self.app.open_lore_entry(str(entry_id), issue=issue)
+        elif name:
+            self.app.open_lore_entry("", name=str(name), issue=issue)
+        else:
+            self.app.show_toast("This note is not tied to a lore entry.")
 
     def _open_project_search(self):
         from ui_qt.widgets.studio_dialogs import ProjectSearchDialog
@@ -1490,16 +1733,25 @@ class EditorWidget(QWidget):
         paths = self.app.engine.paths
         if not paths:
             return
-        path, _f = get_open_file_name(
-            self, "Import chapter", "",
+        selected, _f = get_open_file_names(
+            self, "Import chapter(s)", "",
             "Documents (*.md *.markdown *.txt *.docx)")
-        if not path:
+        if not selected:
             return
         from src import import_docs
-        created = import_docs.import_file(paths["chapters"], path)
+        last_id = None
+        names = []
+        for path in selected:
+            created = import_docs.import_file(paths["chapters"], path)
+            last_id = created["id"]
+            names.append(created["name"])
         self.refresh_chapters()
-        self._select_chapter_id(created["id"])
-        self.app.show_toast(f"Imported {created['name']}")
+        if last_id:
+            self._select_chapter_id(last_id)
+        if len(names) == 1:
+            self.app.show_toast(f"Imported {names[0]}")
+        else:
+            self.app.show_toast(f"Imported {len(names)} chapters.")
 
     def _ensure_ai_surface(self):
         """Show the Write/Chat dock so toolbar AI actions have somewhere to land."""

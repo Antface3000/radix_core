@@ -40,7 +40,7 @@ def _assign_field(entry: dict, key: str, value: str) -> None:
     val = (value or "").strip()
     if not val:
         return
-    if key in ("keywords", "aliases", "tags"):
+    if key in ("keywords", "aliases", "tags", "groups"):
         parts = [v.strip() for v in val.split(",") if v.strip()]
         existing = list(entry.get(key) or [])
         entry[key] = list(dict.fromkeys(existing + parts))

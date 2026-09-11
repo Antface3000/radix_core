@@ -26,6 +26,30 @@ _COMMON_TYPOS = {
     "definately": "definitely",
     "untill": "until",
     "wich": "which",
+    "becuase": "because",
+    "beleive": "believe",
+    "acheive": "achieve",
+    "adress": "address",
+    "arguement": "argument",
+    "begining": "beginning",
+    "enviroment": "environment",
+    "existance": "existence",
+    "foriegn": "foreign",
+    "goverment": "government",
+    "happend": "happened",
+    "independant": "independent",
+    "neccessary": "necessary",
+    "occassion": "occasion",
+    "posession": "possession",
+    "priviledge": "privilege",
+    "probaly": "probably",
+    "realy": "really",
+    "represantative": "representative",
+    "succesful": "successful",
+    "tommorow": "tomorrow",
+    "tounge": "tongue",
+    "truely": "truly",
+    "wierd": "weird",
 }
 
 try:
@@ -246,16 +270,23 @@ class SpellCheckService:
             return False
 
     def autocorrect_candidate(self, word: str) -> str | None:
-        key = (word or "").lower()
-        if key in _COMMON_TYPOS:
-            repl = _COMMON_TYPOS[key]
-            return repl if word[:1].isupper() else repl
-        if not self.is_misspelled(word):
+        """Only fix curated common typos — never guess from spellcheck suggestions.
+
+        Single-suggestion enchant replaces were too aggressive on names, dialect,
+        and invented setting terms.
+        """
+        raw = (word or "").strip()
+        if not raw or not raw.isalpha():
             return None
-        suggestions = self.suggest(word)
-        if len(suggestions) == 1:
-            return suggestions[0]
-        return None
+        key = raw.lower()
+        if key not in _COMMON_TYPOS:
+            return None
+        repl = _COMMON_TYPOS[key]
+        if raw.isupper():
+            return repl.upper()
+        if raw[:1].isupper():
+            return repl[:1].upper() + repl[1:]
+        return repl
 
     def highlighter_for(self, widget: QWidget) -> SpellCheckHighlighter | None:
         return getattr(widget, _SPELL_ATTR, None)

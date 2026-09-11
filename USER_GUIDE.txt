@@ -16,7 +16,7 @@ under Help). Hover any control for a tooltip.
 - Studio first: manuscript, binder, Story Bible, lore, world state, compile,
   import, snapshots, and project search ship in the default install.
 - Three packs (Add Ons, all off by default): Local LLM, Image, Audio.
-  AI chrome (Team, Write/Chat dock, Image Gen, Voice, MOCK MODE) stays hidden
+  AI chrome (Team, Draft, Write/Chat dock, Image Gen, Voice, MOCK MODE) stays hidden
   until the matching pack is enabled. Download models/voices only after enable.
 - Genre-agnostic: setting comes from each project's Story Bible, Lorebook, and
   World State, not from hardcoded world prompts.
@@ -34,7 +34,7 @@ lightboxes from the left toolbar.
 The left toolbar
 ----------------
 Always: Story Bible, Projects, Focus, Add Ons, Help, Settings.
-With packs: Team (LLM), Image Gen (Image), Voice (Audio).
+With packs: Team (LLM), Draft (LLM), Image Gen (Image), Voice (Audio).
 
 Click a button to show that panel. Stay open pins a lightbox. Close or toggle
 the button again to dismiss. Settings and Help stay as lightboxes.
@@ -75,7 +75,7 @@ Find and spellcheck
 -------------------
 Find in chapter (Aa / Word / .*). Spellcheck underlines misses; the replace bar
 offers Replace, more suggestions, Ignore, and Add to dictionary. Optional
-as-you-type autocorrect is in Settings → Editor (off by default). A grammar
+as-you-type autocorrect (common typos only — Settings → Editor, off by default). A grammar
 checker can be dropped in later as radix_grammar.py on an extra plugin path
 (Add Ons → extra directories) — it is not one of the three packs.
 
@@ -100,6 +100,7 @@ Gated actions (packs)
 - Visualize — Image pack (ComfyUI).
 - Listen — Audio pack (speech).
 - Summarize / Write / Chat / Query-blurb / continuity list — Local LLM pack.
+- Draft lightbox, Story Bible wizards, Fill from chapters — Local LLM pack.
 
 Split view
 ----------
@@ -115,17 +116,31 @@ The AI Assistant dock appears only when the Local LLM pack is enabled.
 Modes
 -----
 - Write — Prose Writer drafts the next passage; optional critics refine it.
-  Voice lock (when you have accepted pages) matches your diction.
+  Continue from (AI dock / Settings → Editor): Cursor uses text before the
+  caret and inserts there; End of chapter uses the full page and inserts at
+  the end. A text selection always overrides this. Voice lock (when you have
+  accepted pages) matches your diction.
+  Settings → Editor → Prose constraints (on by default) injects anti-trope /
+  pacing / sensory hard rules into Write and rewrite critics. Edit the text or
+  Restore defaults; turn the checkbox off to disable for a session after Save.
+  Do not list example smells or textures in that box — the model will copy them.
 - Chat — project-aware conversation. Not inserted as manuscript.
 - Query / blurb — named job for query letter, synopsis, or cover blurb. Never
   mixed into Write.
 
 Retrieval over the full manuscript + lore supplements PREVIOUSLY for long books.
-Continuity list (lore audit issues) appears under the editor; double-click to
-jump to the lore entry.
+Continuity list (lore audit issues) appears under the editor; click an issue to
+open Story Bible on that lore entry. A missing name opens a new Lorebook card
+prefilled with the caught name, manuscript quotes, and only fields the audit
+can fill with certainty.
 
-Ghost text, draft bar, and shortcuts are unchanged: Ctrl+Enter run, Esc stop,
-Ctrl+Shift+A accept, Ctrl+Shift+X reject, Ctrl+Shift+R retry.
+Ghost text (AI dock, Write mode): stream the result as grey italic provisional
+text in the manuscript. Tab accepts, Esc dismisses. The draft bar still appears
+when Ghost text is off. Auto-scroll (same dock) follows new text only when
+checked; leave it off to keep your place while Write or Chat streams.
+
+Shortcuts: Ctrl+Enter run, Esc stop (or dismiss ghost/draft), Ctrl+Shift+A
+accept draft, Ctrl+Shift+X reject, Ctrl+Shift+R retry. Find: Ctrl+F.
 
 
 5. STORY BIBLE
@@ -137,11 +152,37 @@ Open from the left toolbar. Tabs:
 - Lorebook: typed canon entries — People, Creatures, Places, Things, Factions,
   Events, Concepts. Each type has its own context fields (e.g. creature type,
   habitat, powers for Creatures; territory, history for Places). Common fields:
-  keywords, aliases, tags, portrait path, notes. Filter the list by type; use New to pick a type.
+  keywords, aliases, tags, portrait path, notes. People also have role,
+  pronouns, groups, personality, physical description, dialogue style, goals,
+  and relationships (aligned with Sudowrite character cards). Import CSV…
+  on the Lorebook tab upserts a Sudowrite export (Name, Role, Pronouns, Groups,
+  Other Names, Personality, Physical Description, Dialogue Style).
+  Filter the list by type; use Add entry to pick a type. Changing an entry’s
+  type keeps notes, keywords, and other shared fields and saves immediately.
+  Wizard… interviews the model and creates a new card; Fill with wizard
+  does the same for the selected entry. Click chips to drop answers into the
+  text box (uncheck to remove them), then preview. Apply stays off if the
+  fill produced no fields, so you never get a blank card. Replace overwrites
+  existing text; leave it unchecked to fill blanks only.
+
   Flags: Pinned and Always include in SETTING.
 - World State: current date, location, scene notes, plus timeline, factions,
-  ongoing events, and facts (one item per line).
-- Outline: global and per-chapter summary and beats.
+  ongoing events, and facts (one item per line). World wizard fills location,
+  date, factions, ongoing events, and facts the same way.
+- Outline: global and per-chapter summary and beats. Draft → Generate Scenes
+  writes those chapter beats here.
+
+Canon wizard (Bible tab) interviews for premise, genre & tone, world rules,
+style notes, and synopsis. Wizards need the Local LLM pack.
+
+Fill from chapters… (Bible, Lorebook, World State, or Draft) reads one or
+more manuscript chapters and proposes every field the prose can support:
+POV, tense, synopsis, premise/tone/rules when they are on the page, world
+location/date/factions/facts, chapter binder POV/location/date, outline
+summary/beats, and lore cards (update by name or create). Uncheck rows you
+do not want. Default apply fills blanks only; Replace overwrites. The model
+is told to omit anything it would have to invent. Grammatical POV and tense
+also use a conservative heuristic if the model skips them.
 
 Save All writes all tabs. Export canon… saves a readable Markdown bundle.
 
@@ -168,7 +209,29 @@ Lorebook and surfaces relevant entries under the editor (and feeds them to the
 AI). Configure it in Settings -> Editor.
 
 
-6. TEAM AND ORCHESTRATION
+6. DRAFT (Local LLM pack)
+=========================
+
+Open Draft from the left toolbar (needs the Local LLM pack). It plans a
+chapter the way a beat sheet does, then writes one prose pass.
+
+1. Pick the chapter (this also switches the manuscript editor).
+2. Read or expand the chapter outline summary from Story Bible → Outline.
+3. Generate Scenes fills the beat list from that summary, existing beats,
+   Focus → Research (parking_lot.txt — the brain dump), scored lore, and
+   short genre/style snippets. Edit the lines; they save to that chapter’s
+   outline on blur, Save scenes, Generate complete, and before Plan Draft.
+4. Optional extra instructions, plus session-only POV / perspective character
+   / tense (prefilled from the Story Bible and lore names — they do not
+   rewrite the bible). Fill from chapter… can propose those from the prose.
+5. Plan Draft writes one continuous passage covering every scene and sends
+   it to the editor draft bar (ghost text if that checkbox is on). Insert
+   is at the end of the chapter, or the start if the page is empty.
+
+Accept / reject / refine the prose the same way as Editor → Write.
+
+
+7. TEAM AND ORCHESTRATION
 =========================
 
 The Team panel is the single place for multi-agent work. Three tabs:
@@ -215,7 +278,7 @@ Orchestration personas (system planner, system liaison) are hidden and use the
 architect model only.
 
 
-7. PROJECTS
+8. PROJECTS
 ===========
 
 The Projects panel creates, switches, renames, and deletes isolated worlds. Each
@@ -228,10 +291,12 @@ project… links this book to a series parent so manuscripts stay per-book while
 canon is shared.
 
 On first launch (or when enabled in the startup dialog), a Projects launcher
-opens before the main window so you can continue, open, or create a project.
+opens before the main window. Nothing is loaded until you Open selected,
+Create, or Open last. Closing the launcher leaves the studio empty; the last
+project is only opened if you pick it.
 
 
-8. FOCUS EXTRAS
+9. FOCUS EXTRAS
 ===============
 
 Open Focus from the left toolbar (opens as a movable lightbox; check Stay open
@@ -242,16 +307,19 @@ to keep it pinned). Tabs:
   event: / concept: — then Name: notes. Pipe extra fields:
   creature: Smaug | type: dragon | notes: hoard guardian. Lines starting with #
   are ignored. Choose default type, Add vs Upsert, then Add to Lorebook.
-- Research (not canon): parking lot scratchpad. Never auto-captured into lore.
+- Research (not canon): parking lot scratchpad (parking_lot.txt). Never
+  auto-captured into lore. Draft uses this file as the chapter brain dump
+  when generating scenes.
 - Canon Audit: rule-based lore report (duplicates, thin entries, keyword clashes,
-  manuscript orphans). Double-click an issue to jump to the lore entry. Preview
+  manuscript orphans). Click an issue to open that lore entry, or to start a
+  new card when the name is missing from Lorebook. Preview
   legacy upgrade runs the same migration as Story Bible → Upgrade legacy….
 - Pre-Flight: readiness checklist (bible, lore, world state, chapters, setting
   depth, audit summary). Re-check re-runs it.
 
 
-9. ADD ONS (PLUGIN PACKS)
-=========================
+10. ADD ONS (PLUGIN PACKS)
+==========================
 
 Open Add Ons on the left. Each pack is a card: Enable, then Install.
 
@@ -259,7 +327,9 @@ Local LLM
   1. Install inference engine (prebuilt llama-cpp-python: NVIDIA GPU if
      nvidia-smi is present, otherwise CPU).
   2. Download writing models into models/. All three is about 15 GB; Architect
-     only is enough for Write. Progress appears at the bottom of Add Ons.
+     only is enough for Write, Draft, and Story Bible wizards. Healthy GGUFs
+     already on disk are skipped; missing or corrupt files are fetched again.
+     Progress appears at the bottom of Add Ons.
 
 Image
   ComfyUI is a separate app. Use “How to install ComfyUI”, then Browse to the
@@ -274,8 +344,8 @@ Heartbeat dots on the status bar appear only for enabled packs. Comfy/AllTalk
 are not started at launch unless that pack is on.
 
 
-9b. SERVICE SYNC
-================
+10b. SERVICE SYNC
+=================
 
 Radix drives separately-running ComfyUI and AllTalk. Enable the Image or Audio
 pack first, then use Add Ons to set folders, launch, and sync assets (copy-only).
@@ -285,7 +355,7 @@ not auto-started. Piper is a per-call CLI. Heartbeat interval is in
 Settings → Services (default 30 seconds).
 
 
-10. SETTINGS CONTROL CENTER
+11. SETTINGS CONTROL CENTER
 ===========================
 
 Open Settings from the left toolbar (lightbox). Tabbed control center; changes
@@ -298,21 +368,24 @@ persist to data/global.json / data/agents.json and apply live.
 - Orchestration: max steps, HITL (liaison), optional team summary (off by
   default), ambiguity check, system planner/liaison keys.
 - Editor: lore autoscan interval, match mode (substring / word boundary / regex
-  keywords), find defaults (case, whole words, regex), Write/Chat pipeline,
-  style guides, prose constraints (anti-trope filter for Write), team defaults
-  (default specialist, ideas persona).
+  keywords), find defaults (case, whole words, regex), Write continue from
+  (cursor vs end of chapter), Write/Chat pipeline, style guides, prose
+  constraints (anti-trope filter for Write — toggle + editable text + Restore
+  defaults), team defaults (default specialist, ideas persona).
 - Agents: per-persona overrides (global vs project scope), reset project override.
 - Services: ComfyUI / AllTalk URLs and folders, TTS, Piper, heartbeat interval.
 - Image: workflow, dimensions, style prefix, seed behavior.
-- Appearance: spellcheck, panel scroll/font, lightbox size and open mode (replace
-  vs stack), editor font family, line height, word goal.
+- Appearance: spellcheck, Auto-scroll to end (Write / Chat / Team streams),
+  panel font, lightbox size and open mode (replace vs stack). Pop-outs shrink
+  to the usable screen (below the taskbar) if the saved size would overflow.
+  Editor font family, line height, word goal.
 
 Panel lightboxes: toolbar buttons open floating panels; checked buttons show which
 panels are open. Stay open keeps a panel pinned across switches. The editor uses
 the full window width.
 
 
-11. LORE CAPTURE MARKERS
+12. LORE CAPTURE MARKERS
 ========================
 
 Agents persist canon by wrapping it in markers. With Auto-capture on (Settings ->
@@ -358,11 +431,14 @@ Orchestrated runs capture each agent step plus the Manager synthesis. Open
 Story Bible tabs refresh automatically when capture succeeds.
 
 
-12. TIPS AND TROUBLESHOOTING
+13. TIPS AND TROUBLESHOOTING
 ===========================
 
 - Everything says [MOCK ...]: no models are installed/loaded. That's normal on
   a fresh setup - see INSTALL.txt to add GGUF models.
+- Wizard preview says nothing usable / Apply is grey: add a name or seed on
+  the first screen and answer a few chips, then Fill card again. Apply will
+  not create an empty Lorebook card.
 - A pipeline pauses between agents: cross-tier steps reload the model
   (single-slot on 8GB). Expected.
 - Out of VRAM: lower n_gpu_layers in Settings -> Models, reduce n_ctx, or drop
@@ -380,7 +456,7 @@ Story Bible tabs refresh automatically when capture succeeds.
   ... More drawer) and switch to User Guide.
 
 
-13. MODEL DOWNLOAD URLS
+14. MODEL DOWNLOAD URLS
 =======================
 
 Quick reference for every weight Radix Core expects. Option A scripts are
@@ -389,7 +465,10 @@ INSTALL.txt.
 
 Writing models (GGUF) -> models/
 --------------------------------
-Automatic: get_models.bat or .venv\Scripts\python.exe scripts/download_models.py
+Automatic: get_models.bat or
+  .venv\Scripts\python.exe scripts/download_models.py
+  Skips GGUFs that already look healthy; use --force to re-download.
+  Add Ons → Download writing models uses the same logic.
 
 Manual (save with the exact local filename):
 
@@ -450,7 +529,7 @@ Voice files come from your AllTalk folder or from assets/voices/ via Add Ons →
 Sync Assets.
 
 
-14. UPDATES
+15. UPDATES
 ===========
 
 Current version is in the VERSION file and shown in the window title (v0.2.0+).

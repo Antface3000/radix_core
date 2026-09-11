@@ -42,8 +42,8 @@ class FindLightbox(QWidget):
         title.setObjectName("FindLightboxTitle")
         header.addWidget(title, 1)
         close_btn = QPushButton("×")
-        close_btn.setFixedSize(28, 28)
-        close_btn.setProperty("secondary", True)
+        close_btn.setObjectName("FeatureCloseButton")
+        close_btn.setFixedSize(30, 30)
         close_btn.setToolTip("Close (Esc)")
         close_btn.clicked.connect(self.close)
         header.addWidget(close_btn)
@@ -101,10 +101,14 @@ class FindLightbox(QWidget):
         self.editor._load_find_settings()
 
         parent = self.editor.window()
+        self.show()
         if parent is not None:
             geo = parent.geometry()
-            self.move(geo.x() + geo.width() - self.width() - 40, geo.y() + 80)
-        self.show()
+            self.adjustSize()
+            x = geo.x() + geo.width() - self.width() - 40
+            y = geo.y() + 80
+            from ui_qt.window_geom import fit_widget
+            fit_widget(self, width=self.width(), height=self.height(), x=x, y=y)
         self.raise_()
         self.activateWindow()
         self.entry.setFocus()

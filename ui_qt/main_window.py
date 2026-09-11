@@ -44,6 +44,7 @@ from ui_qt.panels.addons_panel import AddOnsPanel
 from ui_qt.panels.imagegen_panel import ImageGenPanel
 from ui_qt.panels.voice_panel import VoicePanel
 from ui_qt.panels.focus_panel import FocusPanel
+from ui_qt.panels.draft_panel import DraftPanel
 from ui_qt.widgets.spellcheck import (
     SpellCheckWatcher,
     install_spellcheck_subtree,
@@ -63,7 +64,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         projects.ensure_initialized()
         self.settings = Settings()
-        self.engine = AgentEngine(settings=self.settings)
+        self.engine = AgentEngine(
+            settings=self.settings,
+            auto_open=not self.settings.get("ui.show_startup", True),
+        )
         self.request_flush.connect(
             self.flush_project_context, Qt.ConnectionType.QueuedConnection)
         self.request_capture.connect(
@@ -91,6 +95,8 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(f"{config.APP_TITLE} v{config.APP_VERSION}")
         self.resize(1280, 820)
+        from ui_qt.window_geom import fit_widget
+        fit_widget(self, width=1280, height=820, center=True)
 
         self._build_editor()
         self._build_toolbar()
@@ -111,6 +117,8 @@ class MainWindow(QMainWindow):
 
     def showEvent(self, event):
         super().showEvent(event)
+        from ui_qt.window_geom import fit_widget
+        fit_widget(self)
         # Stylesheet polish can change button metrics — re-equalize once shown.
         QTimer.singleShot(0, self._uniform_feature_rail_buttons)
         if not self._startup_done:
@@ -231,6 +239,7 @@ class MainWindow(QMainWindow):
     def _register_features(self):
         features = [
             ("Story Bible", StoryBiblePanel),
+            ("Draft", DraftPanel),
             ("Team", TeamPanel),
             ("Projects", ProjectsPanel),
             ("Image Gen", ImageGenPanel),
@@ -438,13 +447,30 @@ class MainWindow(QMainWindow):
         if panel and hasattr(panel, "show_world_state_tab"):
             panel.show_world_state_tab()
 
-    def open_lore_entry(self, entry_id: str):
-        """Open Story Bible lore tab and select an entry (audit jump-to)."""
-        # Keep Focus (or other source panels) open so users can click through issues.
+    def open_lore_entry(
+        self, entry_id: str, *, name: str | None = None, issue=None,
+    ):
+        """Open Story Bible lore tab; create a draft card if the name is missing."""
         self.ensure_feature("Story Bible", keep_others=True)
         panel = self._panels.get("Story Bible")
-        if panel and hasattr(panel, "select_lore_entry"):
-            panel.select_lore_entry(entry_id)
+        if panel is None:
+            return
+        if entry_id and hasattr(panel, "select_lore_entry"):
+            if panel.select_lore_entry(entry_id):
+                return
+            self.show_toast("Could not find that lore entry.", error=True)
+            return
+        if name:
+            if hasattr(panel, "select_lore_entry_by_name"):
+                if panel.select_lore_entry_by_name(name):
+                    return
+            if hasattr(panel, "add_lore_from_audit"):
+                if panel.add_lore_from_audit(name, issue=issue):
+                    return
+            self.show_toast(
+                f"Could not start a lore entry for '{name}'.", error=True)
+            return
+        self.show_toast("This note is not tied to a lore entry.")
 
     def switch_project(self, project_id: str):
         try:
@@ -519,8 +545,9 @@ class MainWindow(QMainWindow):
         self.update_capture_chip()
 
     def refresh_header(self):
-        proj = self.engine.active_project()
-        name = proj["name"] if proj else "(none)"
+        pid = self.engine.project_id
+        proj = projects.get_project(pid) if pid else None
+        name = proj["name"] if proj else "(no project)"
         self._project_lbl.setText(f"Project: {name}")
 
     def refresh_worldbar(self):

@@ -54,7 +54,7 @@ class RunCancelled(Exception):
 
 
 class AgentEngine:
-    def __init__(self, settings=None, project_id=None):
+    def __init__(self, settings=None, project_id=None, *, auto_open=True):
         self.settings = settings or Settings()
         self.current_key = None      # model_key of the resident model
         self.current_llm = None      # llama_cpp.Llama instance, or None in mock
@@ -72,11 +72,22 @@ class AgentEngine:
         self.project_id = None
         self.paths = None
         self.memory = None
-        self.set_project(project_id or projects.get_active_project_id())
+        if project_id:
+            self.set_project(project_id)
+        elif auto_open:
+            pid = projects.get_active_project_id()
+            if pid:
+                self.set_project(pid)
 
     # ----------------------- projects --------------------------------------
     def set_project(self, project_id):
-        """Switch the active project: rewire paths + memory."""
+        """Switch the active project: rewire paths + memory. None unloads."""
+        if not project_id:
+            self.project_id = None
+            self.paths = None
+            self.memory = None
+            log.info("Project cleared (none selected)")
+            return None
         projects.ensure_project_layout(project_id)
         projects.set_active_project_id(project_id)
         self.project_id = project_id

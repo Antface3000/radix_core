@@ -1,15 +1,16 @@
 """Prompt dialog for Story Bible field Generate."""
 
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QLabel, QPlainTextEdit, QHBoxLayout, QPushButton,
+    QVBoxLayout, QLabel, QPlainTextEdit, QHBoxLayout, QPushButton,
     QComboBox,
 )
 
 from src.story_bible_gen import MODE_LABELS
 from ui_qt.widgets.spellcheck import install_spellcheck_subtree
+from ui_qt.widgets.themed_dialog import ThemedDialog
 
 
-class FieldGenerateDialog(QDialog):
+class FieldGenerateDialog(ThemedDialog):
     def __init__(self, parent, field_label: str, mode: str):
         super().__init__(parent)
         self.setWindowTitle(f"Generate — {field_label}")

@@ -40,10 +40,12 @@ FIELD_SPECS: dict[str, tuple[tuple[str, str, bool], ...]] = {
     "character": (
         ("role", "Role in story", False),
         ("pronouns", "Pronouns", False),
-        ("appearance", "Appearance", True),
+        ("groups", "Groups (comma-separated)", False),
+        ("personality", "Personality", True),
+        ("appearance", "Physical description", True),
+        ("voiceStyle", "Dialogue / speech style", True),
         ("goals", "Goals & motivations", True),
         ("relationships", "Relationships", True),
-        ("voiceStyle", "Voice / speech style", False),
     ),
     "creature": (
         ("creatureType", "Creature type (species, class, taxonomy)", False),
@@ -161,6 +163,13 @@ FIELD_ALIASES: dict[str, str] = {
     "relationship": "relationships",
     "voice": "voiceStyle",
     "voicestyle": "voiceStyle",
+    "dialogue": "voiceStyle",
+    "dialoguestyle": "voiceStyle",
+    "physicaldescription": "appearance",
+    "othernames": "aliases",
+    "personality": "personality",
+    "groups": "groups",
+    "group": "groups",
 }
 
 

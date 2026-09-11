@@ -105,6 +105,8 @@ DEFAULT_GLOBAL = {
         "find_regex": False,
         "ghost_text": False,           # Write result streams inline as provisional text
         "voice_preset": "my",          # my | alt | neutral (UI: My Style / Alt Style / Neutral Style)
+        # Write continue point: cursor = text before caret; end = full chapter.
+        "write_from": "cursor",        # cursor | end
         "style_guide_my": "",
         "style_guide_alt": "",
         # Hard rules for Editor → Write (and prose rewrite critics).
@@ -179,6 +181,12 @@ class Settings:
         ui = self.global_data.setdefault("ui", {})
         if ui.get("lightbox_default_width") == 460:
             ui["lightbox_default_width"] = config.LIGHTBOX_DEFAULT_WIDTH
+            self.save_global()
+        editor = self.global_data.setdefault("editor", {})
+        pc = editor.get("prose_constraints") or ""
+        # Old default listed copyable grit examples; models echoed them in prose.
+        if "burnt motor oil" in pc or "stale plastic" in pc:
+            editor["prose_constraints"] = DEFAULT_PROSE_CONSTRAINTS
             self.save_global()
 
     def save_global(self):

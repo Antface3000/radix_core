@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QThread, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
+    QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
     QLineEdit, QCheckBox, QMessageBox,
 )
 
@@ -97,22 +97,29 @@ def _show_welcome(window) -> None:
 
 
 def _show_project_launcher(window) -> None:
-    dlg = QDialog(window)
+    from src import projects as projects_mod
+    from ui_qt.widgets.themed_dialog import ThemedDialog
+
+    dlg = ThemedDialog(window)
     dlg.setWindowTitle("Open a project")
     dlg.setMinimumSize(460, 360)
     v = QVBoxLayout(dlg)
-    v.addWidget(QLabel("Choose a project to work in, or create a new one."))
+    v.addWidget(QLabel(
+        "Choose a project to work in, or create a new one. "
+        "Nothing is opened until you pick Open, Create, or Open last."))
 
+    last_id = projects_mod.get_active_project_id()
     lst = QListWidget()
-    active = window.engine.project_id
-    for p in window.engine.list_projects():
+    last_row = 0
+    for i, p in enumerate(window.engine.list_projects()):
         label = p["name"]
-        if p["id"] == active:
-            label += "  (current)"
+        if p["id"] == last_id:
+            label += "  (last opened)"
+            last_row = i
         lst.addItem(label)
         lst.item(lst.count() - 1).setData(Qt.ItemDataRole.UserRole, p["id"])
     if lst.count():
-        lst.setCurrentRow(0)
+        lst.setCurrentRow(last_row)
     v.addWidget(lst, 1)
 
     name_row = QHBoxLayout()
@@ -124,11 +131,18 @@ def _show_project_launcher(window) -> None:
     v.addLayout(name_row)
 
     btn_row = QHBoxLayout()
-    skip = QPushButton("Continue with current")
+    skip = QPushButton("Open last project")
     skip.setProperty("secondary", True)
+    skip.setEnabled(bool(last_id))
+    skip.setToolTip("Open the project you used last time")
+    none_btn = QPushButton("No project")
+    none_btn.setProperty("secondary", True)
+    none_btn.setToolTip("Close this window without opening a manuscript")
     open_btn = QPushButton("Open selected")
     btn_row.addWidget(skip)
+    btn_row.addWidget(none_btn)
     btn_row.addStretch()
+    open_btn.setDefault(True)
     btn_row.addWidget(open_btn)
     v.addLayout(btn_row)
 
@@ -136,12 +150,21 @@ def _show_project_launcher(window) -> None:
     show_again.setChecked(True)
     v.addWidget(show_again)
 
+    opened = {"ok": False}
+
     def open_selected():
         item = lst.currentItem()
         if item:
             pid = item.data(Qt.ItemDataRole.UserRole)
             if pid:
                 window.switch_project(pid)
+                opened["ok"] = True
+        dlg.accept()
+
+    def open_last():
+        if last_id:
+            window.switch_project(last_id)
+            opened["ok"] = True
         dlg.accept()
 
     def create_project():
@@ -152,17 +175,24 @@ def _show_project_launcher(window) -> None:
         for p in window.engine.list_projects():
             if p["name"] == name:
                 window.switch_project(p["id"])
+                opened["ok"] = True
                 break
         dlg.accept()
 
     open_btn.clicked.connect(open_selected)
     create_btn.clicked.connect(create_project)
-    skip.clicked.connect(dlg.accept)
+    skip.clicked.connect(open_last)
+    none_btn.clicked.connect(dlg.accept)
     lst.itemDoubleClicked.connect(open_selected)
     dlg.exec()
 
     if not show_again.isChecked():
         window.settings.set("ui.show_startup", False, save=True)
+    if not opened["ok"]:
+        window.refresh_header()
+        window.refresh_worldbar()
+        if window.editor:
+            window.editor.on_project_change()
 
 
 def _start_update_check(window) -> None:

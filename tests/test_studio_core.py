@@ -41,12 +41,14 @@ class PluginPackTests(unittest.TestCase):
         self.assertFalse(plugins.is_enabled(s, "image"))
         self.assertTrue(plugins.panel_allowed(s, "Story Bible"))
         self.assertFalse(plugins.panel_allowed(s, "Team"))
+        self.assertFalse(plugins.panel_allowed(s, "Draft"))
         self.assertFalse(plugins.panel_allowed(s, "Image Gen"))
         self.assertFalse(plugins.panel_allowed(s, "Voice"))
 
     def test_llm_unlocks_team(self):
         s = FakeSettings({"plugins.llm": True})
         self.assertTrue(plugins.panel_allowed(s, "Team"))
+        self.assertTrue(plugins.panel_allowed(s, "Draft"))
 
     def test_grammar_loader_missing(self):
         self.assertIsNone(load_checker(FakeSettings({"plugins.extra_paths": []})))
@@ -221,16 +223,41 @@ class WritePromptTests(unittest.TestCase):
         system, user = build_write_prompt(
             "=== STORY SO FAR ===\nShe opened the hatch.",
             prose_constraints=DEFAULT_PROSE_CONSTRAINTS)
-        self.assertIn("PROSE CONSTRAINTS (mandatory", system)
+        self.assertIn("PROSE CONSTRAINTS (silent", system)
         self.assertIn("ANTI-SUMMARIZATION", system)
         self.assertIn("ozone", system)
-        self.assertIn("Honor PROSE CONSTRAINTS", user)
+        self.assertIn("Begin immediately with story prose", user)
+        self.assertNotIn("Honor PROSE CONSTRAINTS", user)
+        self.assertNotIn("burnt motor oil", system)
+        self.assertNotIn("stale plastic", system)
 
     def test_prose_constraints_optional(self):
         from src.story_context import build_write_prompt
         system, user = build_write_prompt("ctx", prose_constraints="")
-        self.assertNotIn("PROSE CONSTRAINTS (mandatory", system)
-        self.assertNotIn("Honor PROSE CONSTRAINTS", user)
+        self.assertNotIn("PROSE CONSTRAINTS (silent", system)
+        self.assertNotIn("Begin immediately with story prose", user)
+
+
+class WindowGeomTests(unittest.TestCase):
+    def test_clamp_shrinks_taller_than_screen(self):
+        from src.geom import clamp_geometry
+        x, y, w, h = clamp_geometry(50, 40, 720, 720, 0, 0, 1366, 680)
+        self.assertLessEqual(h, 680 - 48)
+        self.assertLessEqual(w, 1366)
+        self.assertGreaterEqual(x, 0)
+        self.assertGreaterEqual(y, 0)
+        self.assertLessEqual(x + w, 1366)
+        self.assertLessEqual(y + h, 680)
+
+    def test_clamp_pulls_offscreen_window_back(self):
+        from src.geom import clamp_geometry
+        x, y, w, h = clamp_geometry(4000, 3000, 400, 300, 0, 0, 1280, 720)
+        self.assertEqual(w, 400)
+        self.assertEqual(h, 300)
+        self.assertGreaterEqual(x, 0)
+        self.assertGreaterEqual(y, 0)
+        self.assertLessEqual(x + w, 1280)
+        self.assertLessEqual(y + h, 720)
 
 
 if __name__ == "__main__":

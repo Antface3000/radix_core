@@ -81,7 +81,7 @@ def export_bible_bundle(paths, project_id: str | None = None, fmt: str = "md") -
         lines.append(f"### {name} ({kind})")
         for key, label, _multi in lore_types.fields_for_entry_type(et):
             val = entry.get(key)
-            if key in ("keywords", "aliases", "tags") and val:
+            if key in ("keywords", "aliases", "tags", "groups") and val:
                 val = ", ".join(str(v) for v in val if v)
             elif key == "relationships" and val:
                 val = lore_types.format_relationships(val)

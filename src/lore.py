@@ -88,6 +88,8 @@ def normalize_entry(entry, fallback_type="character"):
         "aliases": _to_array(entry.get("aliases")),
         "pronouns": entry.get("pronouns") or "",
         "role": entry.get("role") or "",
+        "personality": entry.get("personality") or "",
+        "groups": _to_array(entry.get("groups")),
         "appearance": entry.get("appearance") or "",
         "goals": entry.get("goals") or "",
         "relationships": relationships,
@@ -251,7 +253,7 @@ def upsert(lore_path, entry, mode="merge", source="agent"):
                 merged[field] = _append_notes(old_val, new_val, source)
             else:
                 merged[field] = _merge_notes(old_val, new_val)
-        for field in ("keywords", "aliases", "tags"):
+        for field in ("keywords", "aliases", "tags", "groups"):
             if entry.get(field):
                 combined = list(dict.fromkeys(
                     _to_array(existing.get(field)) + _to_array(entry.get(field))))
@@ -297,5 +299,5 @@ _LORE_MERGE_TEXT_FIELDS = (
     "notes", "description", "appearance", "goals", "history", "powers",
     "origin", "climate", "inhabitants", "leadership", "territory",
     "participants", "outcome", "when", "role", "voiceStyle", "creatureType",
-    "pronouns",
+    "pronouns", "personality",
 )

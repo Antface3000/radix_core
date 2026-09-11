@@ -7,11 +7,12 @@ import html
 
 from PySide6.QtWidgets import (
     QComboBox,
-    QDialog,
     QLabel,
     QTextBrowser,
     QVBoxLayout,
 )
+
+from ui_qt.widgets.themed_dialog import ThemedDialog
 
 _INS_STYLE = "background-color:#2A3D10; color:#D6F55A;"
 _DEL_STYLE = "background-color:#3A1414; color:#E08A8A; text-decoration:line-through;"
@@ -46,7 +47,7 @@ def build_inline_diff_html(before: str, after: str) -> str:
         f'line-height:1.5;">{body}</div>')
 
 
-class DraftDiffDialog(QDialog):
+class DraftDiffDialog(ThemedDialog):
     """Shows what each critic pass changed, stage by stage."""
 
     def __init__(self, parent, stages: list[tuple[str, str]]):

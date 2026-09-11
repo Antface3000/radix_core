@@ -206,8 +206,9 @@ def assemble(paths, max_chars=6000, exclude_bible_keys=None):
                 "character" if e.get("type") == "character" else "place")
             kind = lore_types.ENTRY_TYPE_LABELS.get(et, et.title())
             body_parts = [
-                e.get("notes"), e.get("appearance"), e.get("history"),
-                e.get("goals"), e.get("powers"), e.get("creatureType"),
+                e.get("notes"), e.get("personality"), e.get("appearance"),
+                e.get("history"), e.get("goals"), e.get("powers"),
+                e.get("creatureType"), e.get("voiceStyle"),
             ]
             body = next((p.strip() for p in body_parts if p and str(p).strip()), "")
             line = f"- [{kind}] {e.get('name')}"

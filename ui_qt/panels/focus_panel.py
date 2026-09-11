@@ -104,6 +104,7 @@ class FocusPanel(BasePanel):
         v = QVBoxLayout(tab)
         v.addWidget(QLabel(
             "Research parking lot — not canon. Capture never reads this pad. "
+            "Draft uses this file as the chapter brain dump when generating scenes. "
             "Move facts into Lorebook or Story Bible when you are ready."))
         self.parking_edit = QPlainTextEdit()
         v.addWidget(self.parking_edit, 1)
@@ -123,14 +124,15 @@ class FocusPanel(BasePanel):
         except OSError:
             self.parking_edit.clear()
 
-    def _save_parking(self):
+    def _save_parking(self, silent: bool = False):
         path = _parking_lot_path(self._paths())
         if not path:
             return
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(self.parking_edit.toPlainText())
-        self.app.show_toast("Parking lot saved.")
+        if not silent:
+            self.app.show_toast("Parking lot saved.")
 
     def _build_audit_tab(self):
         tab = QWidget()
@@ -196,10 +198,12 @@ class FocusPanel(BasePanel):
     def _jump_to_audit_entry(self, item: QListWidgetItem):
         issue = item.data(Qt.ItemDataRole.UserRole)
         eid = getattr(issue, "entry_id", None) if issue is not None else None
+        name = getattr(issue, "target_name", None) if issue is not None else None
         if not eid and isinstance(issue, str):
             eid = issue
-        if eid:
-            self.app.open_lore_entry(str(eid))
+        if eid or name:
+            self.app.open_lore_entry(
+                str(eid) if eid else "", name=name or None, issue=issue)
         else:
             self.app.show_toast("This issue is not tied to a single lore entry.")
 

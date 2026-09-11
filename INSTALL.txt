@@ -27,7 +27,8 @@ installs the writing studio). If Windows says "protected your PC": More info
 → Run anyway.
 
 Create or open a project. You can write immediately. AI is off until you
-enable a pack.
+enable a pack. Local LLM unlocks Write, Chat, Team, Draft, Story Bible
+wizards, and Fill from chapters.
 
 
 STEP 3 - OPTIONAL PACKS (IN THE APP)
@@ -35,13 +36,14 @@ STEP 3 - OPTIONAL PACKS (IN THE APP)
 Left toolbar → **Add Ons**. Tick Enable, then use the Install buttons.
 
   Local LLM  1) Install inference engine  2) Download models
-             (Architect only is enough for Write; all three ~15 GB)
+             (Architect only is enough for Write; all three ~15 GB;
+             already-valid GGUFs are skipped)
   Image      Install ComfyUI (link in the panel), Browse to its folder,
              Launch, Sync assets
   Audio      Install Piper (small, offline). AllTalk folder is optional
 
 Keep writing while downloads run. get_models.bat still works from Explorer
-if you prefer a console.
+if you prefer a console (same skip-if-healthy behavior).
 
 Daily launch: always **Start Radix Core.bat**. Help is on the left toolbar.
 
@@ -73,7 +75,8 @@ IF SOMETHING GOES WRONG (EASY-WAY FIXES)
 - The black window flashes / Python not found: re-run the Python installer
   with "Add python.exe to PATH" ticked.
 - "Windows protected your PC": More info → Run anyway.
-- App installed but Write is hidden: that is correct until Add Ons → Local LLM.
+- App installed but Write / Draft / Team are hidden: that is correct until
+  Add Ons → Local LLM.
 - MOCK MODE after enabling LLM: Install inference engine, then download models.
 
 If you're comfortable with the command line (GPU wheel details, ComfyUI),
@@ -191,7 +194,8 @@ python run.py
 The first run prints a couple of [setup] lines while it builds the venv and
 installs dependencies (this only happens once), then Radix Core opens. With no
 models present, agents reply with [MOCK ...] text - that's expected. The first
-time, a Projects launcher lets you continue, open, or create a project; you
+time, a Projects launcher lets you open, create, or open last; closing it
+leaves the studio empty until you pick a project. You
 can reopen the User Guide from ? in the top bar. Explore the editor, Story
 Bible, and Settings now, then continue below to add models.
 
@@ -269,8 +273,14 @@ Easiest: double-click get_models.bat. Or run it with the venv's Python:
 .venv\Scripts\python.exe scripts/download_models.py
 
 
-This fetches the GGUFs into models/ (about 15 GB; requires huggingface_hub,
-which is already in requirements.txt).
+This fetches missing or corrupt GGUFs into models/ (about 15 GB total;
+requires huggingface_hub, which is already in requirements.txt). Files that
+already look healthy (GGUF header and size) are skipped. To re-download
+everything even when valid:
+
+.venv\Scripts\python.exe scripts/download_models.py --force
+
+Or use Add Ons → Local LLM → Download writing models (same skip logic).
 
 Option B - manual download
 

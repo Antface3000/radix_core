@@ -63,7 +63,7 @@ def _parse_line(line: str, default_type: str) -> dict | None:
         fk, fv = seg.split(":", 1)
         key = lore_types.FIELD_ALIASES.get(fk.strip().lower(), fk.strip())
         val = fv.strip()
-        if key in ("keywords", "aliases", "tags"):
+        if key in ("keywords", "aliases", "tags", "groups"):
             entry[key] = [v.strip() for v in val.split(",") if v.strip()]
         else:
             entry[key] = val

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import config
 from PySide6.QtCore import (
-    Qt, Signal, QEasingCurve, QPoint, QPropertyAnimation, QSize,
+    Qt, Signal, QEasingCurve, QPropertyAnimation,
 )
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox,
     QGraphicsDropShadowEffect, QPushButton, QSizePolicy,
 )
+from ui_qt.window_geom import fit_widget, max_window_size
 
 
 class FeatureLightbox(QWidget):
@@ -30,6 +31,9 @@ class FeatureLightbox(QWidget):
         self.setObjectName("FeatureLightbox")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMinimumSize(340, 400)
+        mw, mh = max_window_size(self)
+        if self.minimumWidth() > mw or self.minimumHeight() > mh:
+            self.setMinimumSize(min(340, mw), min(400, mh))
         w, h = self._default_size()
         self.resize(w, h)
 
@@ -50,8 +54,8 @@ class FeatureLightbox(QWidget):
         self.stay_open.toggled.connect(self._on_stay_open)
         hl.addWidget(self.stay_open)
         close_btn = QPushButton("×")
-        close_btn.setFixedSize(28, 28)
-        close_btn.setProperty("secondary", True)
+        close_btn.setObjectName("FeatureCloseButton")
+        close_btn.setFixedSize(30, 30)
         close_btn.setToolTip("Close panel")
         close_btn.clicked.connect(self.close)
         hl.addWidget(close_btn)
@@ -76,6 +80,7 @@ class FeatureLightbox(QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
+        fit_widget(self)
         # Quick fade-in on every open (~120ms).
         self.setWindowOpacity(0.0)
         self._fade = QPropertyAnimation(self, b"windowOpacity", self)
@@ -89,7 +94,25 @@ class FeatureLightbox(QWidget):
         s = self.app.settings
         w = int(s.get("ui.lightbox_default_width", config.LIGHTBOX_DEFAULT_WIDTH))
         h = int(s.get("ui.lightbox_default_height", config.LIGHTBOX_DEFAULT_HEIGHT))
-        return max(340, w), max(400, h)
+        mw, mh = max_window_size(self)
+        return max(self.minimumWidth(), min(w, mw)), max(self.minimumHeight(), min(h, mh))
+
+    def _on_stay_open(self, checked: bool):
+        self.stay_open_changed.emit(self.feature_name, checked)
+
+    def restore_geometry(self, geo: dict | None):
+        dw, dh = self._default_size()
+        if not geo:
+            fit_widget(self, width=dw, height=dh, center=True)
+            return
+        try:
+            w = max(self.minimumWidth(), int(geo.get("width", dw)))
+            h = max(self.minimumHeight(), int(geo.get("height", dh)))
+            x = int(geo.get("x", 100))
+            y = int(geo.get("y", 80))
+            fit_widget(self, width=w, height=h, x=x, y=y)
+        except (TypeError, ValueError):
+            fit_widget(self, width=dw, height=dh, center=True)
 
     def set_content(self, widget: QWidget):
         if self._content is widget:
@@ -101,25 +124,9 @@ class FeatureLightbox(QWidget):
         self._content = widget
         if widget.parent() is not self._body:
             widget.setParent(self._body)
-        self._body_layout.addWidget(widget)
-
-    def _on_stay_open(self, checked: bool):
-        self.stay_open_changed.emit(self.feature_name, checked)
-
-    def restore_geometry(self, geo: dict | None):
-        dw, dh = self._default_size()
-        if not geo:
-            self.resize(dw, dh)
-            return
-        try:
-            w = max(dw, int(geo.get("width", dw)))
-            h = max(400, int(geo.get("height", dh)))
-            x = int(geo.get("x", 100))
-            y = int(geo.get("y", 80))
-            self.resize(QSize(w, h))
-            self.move(QPoint(x, y))
-        except (TypeError, ValueError):
-            self.resize(dw, dh)
+        widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._body_layout.addWidget(widget, 1)
 
     def geometry_dict(self) -> dict:
         g = self.geometry()

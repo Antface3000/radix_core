@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, QPoint, QRect, QSize, Qt
+from PySide6.QtCore import QEvent, QPoint, QRect, QSize, QTimer, Qt
 from PySide6.QtWidgets import QLayout, QLayoutItem, QSizePolicy, QWidget, QWidgetItem
 
 
@@ -21,6 +21,8 @@ class FlowLayout(QLayout):
         self._items: list[QLayoutItem] = []
         self._hspace = hspacing
         self._vspace = vspacing
+        self._filtering = False
+        self._geom_pending = False
         self.setContentsMargins(margin, margin, margin, margin)
 
     def addItem(self, item: QLayoutItem) -> None:
@@ -36,11 +38,27 @@ class FlowLayout(QLayout):
         if event.type() in (
                 QEvent.Type.Show, QEvent.Type.Hide,
                 QEvent.Type.ShowToParent, QEvent.Type.HideToParent):
-            self.invalidate()
-            parent = self.parentWidget()
-            if parent is not None:
-                parent.updateGeometry()
+            if self._filtering:
+                return False
+            self._filtering = True
+            try:
+                self.invalidate()
+                self._schedule_geom()
+            finally:
+                self._filtering = False
         return False
+
+    def _schedule_geom(self):
+        if self._geom_pending or self.parentWidget() is None:
+            return
+        self._geom_pending = True
+        QTimer.singleShot(0, self._deferred_update)
+
+    def _deferred_update(self):
+        self._geom_pending = False
+        parent = self.parentWidget()
+        if parent is not None:
+            parent.updateGeometry()
 
     def count(self) -> int:
         return len(self._items)
@@ -52,7 +70,11 @@ class FlowLayout(QLayout):
 
     def takeAt(self, index: int) -> QLayoutItem | None:
         if 0 <= index < len(self._items):
-            return self._items.pop(index)
+            item = self._items.pop(index)
+            wid = item.widget()
+            if wid is not None:
+                wid.removeEventFilter(self)
+            return item
         return None
 
     def expandingDirections(self) -> Qt.Orientation:
@@ -69,7 +91,30 @@ class FlowLayout(QLayout):
         self._do_layout(rect, test_only=False)
 
     def sizeHint(self) -> QSize:
-        return self.minimumSize()
+        # Wrap to the parent / screen instead of one endless row.
+        from ui_qt.window_geom import max_content_width
+        width = 0
+        height = 0
+        visible = 0
+        for item in self._items:
+            wid = item.widget()
+            if wid is not None and not wid.isVisible():
+                continue
+            hint = item.sizeHint()
+            if visible:
+                width += self._hspace_for(item)
+            width += hint.width()
+            height = max(height, hint.height())
+            visible += 1
+        m = self.contentsMargins()
+        cap = max_content_width(self.parentWidget())
+        inner = min(width, cap) if width else 0
+        total_w = inner + m.left() + m.right()
+        total_h = (
+            self.heightForWidth(max(total_w, 1))
+            if width else height + m.top() + m.bottom()
+        )
+        return QSize(total_w, total_h)
 
     def minimumSize(self) -> QSize:
         size = QSize()
