@@ -70,6 +70,10 @@ Changed
   leaves the studio empty.
 - README.txt, INSTALL.txt, and USER_GUIDE.txt cover Draft, Story Bible
   wizards, Fill from chapters, chip answers, and Auto-scroll.
+- Removed unused leftovers: Setup/Agents/Plan/Stub panel aliases, empty
+  src/agents handlers, unused tool decorator and plugins.registry shim,
+  unused plan JSON schema, stale INSTALL.md, and the old Hermes GGUF
+  downloader (Architect is DeepSeek now).
 
 Fixed
 -----

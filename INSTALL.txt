@@ -401,8 +401,8 @@ already bundled - you don't copy any workflow file. You only need to give
 ComfyUI the custom nodes and model files it references.
 
 1. Install ComfyUI and start it (default http://127.0.0.1:8188), then set its
-   URL + install folder in the Setup panel and Test it (dot turns green).
-   You can use Launch ComfyUI in Setup to start it from that folder.
+   URL + install folder in Add Ons (Image pack) and Test it (dot turns green).
+   You can use Launch ComfyUI in Add Ons to start it from that folder.
 2. Install ComfyUI Manager (strongly recommended - it makes the next step one
    click):
    - Easiest: use the ComfyUI Desktop app, which already includes Manager, or
